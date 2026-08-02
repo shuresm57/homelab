@@ -18,7 +18,7 @@ This repo reflects the state of my own personal homelab.
 
 [ x ] Proxmox installed
 
-[ ] Terraform written
+[] Terraform written
 
 ## HP Elitebook 32GB
 
