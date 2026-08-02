@@ -1,4 +1,4 @@
-provier "proxmox" {
+provider "proxmox" {
   endpoint = var.dell_endpoint
   insecure = true
   username = "root@pam"
