@@ -13,3 +13,13 @@ This repo reflects the state of my own personal homelab.
 ## Architecture and Stack
 
 ![architecture](imgs/architecture.png)
+
+## Dell 5820
+
+[ x ] Proxmox installed
+
+[ ] Terraform written
+
+## HP Elitebook 32GB
+
+## HP Elitebook 16GB
