@@ -1,0 +1,40 @@
+- hosts: ollama
+  become: true
+  tasks:
+    - name: Install prerequisites
+      apt:
+        name: [ca-certificates, curl, gnupg]
+        state: present
+        update_cache: true
+
+    - name: Add Docker GPG key
+      apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+
+    - name: Add Docker repo
+      apt_repository:
+        repo: "deb https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+        state: present
+
+    - name: Install Docker
+      apt:
+        name: [docker-ce, docker-ce-cli, containerd.io, docker-compose-plugin]
+        state: present
+        update_cache: true
+
+    - name: Write docker-compose for ollama
+      copy:
+        dest: /opt/ollama/docker-compose.yml
+        content: |
+          services:
+            ollama:
+              image: ollama/ollama
+              ports: ["11434:11434"]
+              volumes: ["ollama-data:/root/.ollama"]
+          volumes:
+            ollama-data:
+
+    - name: Compose up
+      community.docker.docker_compose_v2:
+        project_src: /opt/ollama

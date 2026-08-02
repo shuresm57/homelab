@@ -14,9 +14,14 @@ variable "dell_node_name" {
 
 variable "dell_datastore" {
   type    = string
-  default = "local-lvm"
+  default = "local"
 }
 
 variable "ssh_public_key" {
   type = string
+}
+
+variable "ollama_console_password" {
+  type = string
+  sensitive = true
 }
