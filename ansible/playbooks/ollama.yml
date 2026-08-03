@@ -30,11 +30,29 @@
           services:
             ollama:
               image: ollama/ollama
+              container_name: ollama
               ports: ["11434:11434"]
               volumes: ["ollama-data:/root/.ollama"]
+
+            open-webui:
+              image: ghcr.io/open-webui/open-webui:main
+              ports: ["3000:8080"]
+              environment:
+                - OLLAMA_BASE_URL=http://ollama:11434
+                - WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY}
+              volumes: ["open-webui-data:/app/backend/data"]
+              depends_on: [ollama]
+              restart: unless-stopped
+
           volumes:
             ollama-data:
+            open-webui-data:
 
     - name: Compose up
       community.docker.docker_compose_v2:
         project_src: /opt/ollama
+
+    - name: Pull the model
+      community.docker.docker_container_exec:
+        container: ollama
+        command: ollama pull deepseek-coder:33b

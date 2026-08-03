@@ -34,15 +34,6 @@ resource "proxmox_virtual_environment_vm" "ollama" {
     size         = 80
   }
 
-    # Base VM should be stable before GPU passthrough
-
-    # hostpci {
-    #   device = "hostpci0"
-    #   id     = "0000:03:00"   # from `lspci | grep -i nvidia`
-    #   pcie   = true
-    #   xvga   = true
-    # }
-
     network_device { 
         bridge = "vmbr0"
     }
