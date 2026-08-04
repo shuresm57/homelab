@@ -1,5 +1,0 @@
-# Explanation
-
-# Setup
-
-# Deadline
