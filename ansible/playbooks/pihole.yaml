@@ -1,0 +1,16 @@
+- hosts: pihole
+  become: true
+  vars:
+    pihole_webpassword = "{{ vault_pihole_webpassword }}"
+  environment:
+    PIHOLE_INTERFACE: eth0
+    IPV4_ADDRESS: "192.168.0.64/24"
+    PIHOLE_DNS_1: "1.1.1.1"
+    PIHOLE_DNS_2: "9.9.9.9"
+    WEBPASSWORD: "{{ pihole_webpassword }}"
+  tasks:
+    - name: Install Pi-hole
+      shell: curl -sSL https://install.pi-hole.net | bash /dev/stdin --unattended
+      args:
+        creates: /etc/pihole/setupVars.conf
+    

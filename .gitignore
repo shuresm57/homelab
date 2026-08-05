@@ -45,3 +45,7 @@ terraform.rc
 
 # macOS
 .DS_Store
+
+### Ansible ###
+*.retry
+
