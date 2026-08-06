@@ -7,19 +7,16 @@ on:
 jobs:
   checkov:
     runs-on: ubuntu-latest
-    container: bridgecrew/checkov:latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
-      - name: Checkov scan
-        run: checkov -d terraform --framework terraform --output cli --output junitxml --output-file-path console,checkov-report.xml
-        continue-on-error: true
-
-      - name: Upload results
-        uses: actions/upload-artifact@v4
+      - name: Test with Checkov
+        id: checkov
+        uses: bridgecrewio/checkov-action@master
         with:
-          name: checkov-report
-          path: checkov-report.xml
+          directory: terraform/dell
+          framework: terraform
+          soft_fail: true
 
   terraform:
     runs-on: ubuntu-latest

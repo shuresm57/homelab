@@ -40,7 +40,7 @@ resource "proxmox_virtual_environment_vm" "truenas" {
 
   hostpci {
     device = "hostpci0"
-    id     = "0000:0a:00"  # replace with your controller's ID from lspci
+    id     = "0000:0a:00" # replace with your controller's ID from lspci
     pcie   = true
   }
 

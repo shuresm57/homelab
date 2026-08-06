@@ -22,6 +22,6 @@ variable "ssh_public_key" {
 }
 
 variable "ollama_console_password" {
-  type = string
+  type      = string
   sensitive = true
 }
