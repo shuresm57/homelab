@@ -1,0 +1,36 @@
+name: Terraform CI/CD
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  checkov:
+    runs-on: ubuntu-latest
+    container: bridgecrew/checkov:latest
+    steps:
+      - uses: actions/checkout@v3
+      - run: checkov -d terraform --framework terraform
+
+  terraform:
+    runs-on: ubuntu-latest
+    needs: checkov
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Format and check
+        run: terraform fmt -check
+
+      - name: Init
+        run: terraform init
+
+      - name: Validate
+        run: terraform validate
+
+      - name: Plan
+        run: terraform plan
