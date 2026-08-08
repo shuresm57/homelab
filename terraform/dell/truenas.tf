@@ -33,14 +33,14 @@ resource "proxmox_virtual_environment_vm" "truenas" {
   }
 
   cdrom {
-    file_id = proxmox_virtual_environment_download_file.truenas_iso.id
+    file_id = proxmox_download_file.truenas_iso.id
   }
 
   boot_order = ["ide2", "scsi0"]
 
   hostpci {
     device = "hostpci0"
-    id     = "0000:0a:00" # replace with your controller's ID from lspci
+    id     = "0000:b3:00" # replace with your controller's ID from lspci
     pcie   = true
   }
 
