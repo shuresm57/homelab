@@ -1,0 +1,31 @@
+name: Terraform CD
+
+on: workflow_dispatch
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        directories:
+          - terraform/dell
+          - terraform/hp-sff/16gb
+          - terraform/hp-sff/32gb/pihole
+
+    defaults:
+      run:
+        working-directory: ${{ matrix.directories }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Init
+        run: terraform init
+
+      - name: Deploy
+        run: terraform apply -auto-approve
