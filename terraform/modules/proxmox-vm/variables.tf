@@ -88,11 +88,6 @@ variable "dns_servers" {
   default = ["192.168.0.1", "192.168.0.64"]
 }
 
-variable "hostpci_ids" {
-  type    = list(any)
-  default = []
-}
-
 variable "boot_order" {
   type    = list(string)
   default = null
@@ -106,4 +101,9 @@ variable "user_account" {
   })
   default   = null
   sensitive = true
+}
+
+variable "hostpci_mappings" {
+  type    = list(string)
+  default = []
 }

@@ -2,11 +2,6 @@ variable "dell_endpoint" {
   type = string
 }
 
-variable "dell_root_password" {
-  type      = string
-  sensitive = true
-}
-
 variable "dell_node_name" {
   type    = string
   default = "dell"
@@ -24,4 +19,14 @@ variable "ssh_public_key" {
 variable "ollama_console_password" {
   type      = string
   sensitive = true
+}
+
+variable "dell_api_token" {
+  type      = string
+  sensitive = true
+}
+
+variable "proxmox_ssh_user" {
+  type    = string
+  default = "root"
 }

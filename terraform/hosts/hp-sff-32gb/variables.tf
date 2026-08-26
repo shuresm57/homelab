@@ -1,18 +1,18 @@
-variable "host_a_endpoint" {
+variable "endpoint" {
   type = string
 }
 
-variable "host_a_api_token" {
+variable "api_token" {
   type      = string
   sensitive = true
 }
 
-variable "host_a_node_name" {
+variable "node_name" {
   type    = string
   default = "pve-a"
 }
 
-variable "host_a_datastore" {
+variable "datastore" {
   type    = string
   default = "local-lvm"
 }

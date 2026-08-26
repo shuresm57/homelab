@@ -7,7 +7,7 @@ resource "proxmox_download_file" "ubuntu_cloud_image" {
 
 resource "proxmox_download_file" "truenas_iso" {
   content_type = "iso"
-  datastore_id = var.dell_datastore
+  datastore_id = "local"
   node_name    = var.dell_node_name
   url          = "https://download.sys.truenas.net/TrueNAS-SCALE-Goldeye/25.10.5/TrueNAS-SCALE-25.10.5.iso"
 }

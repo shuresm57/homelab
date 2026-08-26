@@ -7,14 +7,14 @@
         state: present
         update_cache: true
 
-    - name: Add Docker GPG key
-      apt_key:
-        url: https://download.docker.com/linux/ubuntu/gpg
-        state: present
-
-    - name: Add Docker repo
-      apt_repository:
-        repo: "deb https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+    - name: Add Docker apt repo and signing key
+      ansible.builtin.deb822_repository:
+        name: docker
+        types: [deb]
+        uris: https://download.docker.com/linux/ubuntu
+        suites: ["{{ ansible_facts['distribution_release'] }}"]
+        components: [stable]
+        signed_by: https://download.docker.com/linux/ubuntu/gpg
         state: present
 
     - name: Install Docker
@@ -22,6 +22,12 @@
         name: [docker-ce, docker-ce-cli, containerd.io, docker-compose-plugin]
         state: present
         update_cache: true
+
+    - name: Create the compose project directory
+      file:
+        path: /opt/ollama
+        state: directory
+        mode: "0755"
 
     - name: Write docker-compose for ollama
       copy:

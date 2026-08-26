@@ -37,11 +37,11 @@ resource "proxmox_virtual_environment_vm" "this" {
   }
 
   dynamic "hostpci" {
-    for_each = var.hostpci_ids
+    for_each = var.hostpci_mappings
     content {
-      device = "hostpci${hostpci.key}"
-      id     = hostpci.value
-      pcie   = true
+      device  = "hostpci${hostpci.key}"
+      mapping = hostpci.value
+      pcie    = true
     }
   }
 

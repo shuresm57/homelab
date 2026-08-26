@@ -5,11 +5,14 @@ all:
   children:
     ollama:
       hosts:
-        ollama:
+        ollama-vm:
           ansible_host: 192.168.0.67
-          ansible_user: ollama
+          ansible_user: ubuntu
     pihole:
       hosts:
-        pihole:
+        pihole-lxc:
           ansible_host: 192.168.0.64
-          ansible_user: pihole
+          ansible_user: root
+          # This LXC was provisioned with a different key than the Dell VMs.
+          # See terraform/hosts/hp-sff-32gb/terraform.tfvars.
+          ansible_ssh_private_key_file: ~/.ssh/vss-server-16gb

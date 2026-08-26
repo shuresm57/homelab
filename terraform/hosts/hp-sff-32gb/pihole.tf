@@ -1,19 +1,12 @@
-resource "proxmox_download_file" "ubuntu_lxc_template" {
-  content_type = "vztmpl"
-  datastore_id = var.host_a_datastore
-  node_name    = var.host_a_node_name
-  url          = "http://download.proxmox.com/images/system/ubuntu-24.04-standard_24.04-2_amd64.tar.zst"
-}
-
 resource "proxmox_virtual_environment_container" "pihole" {
-  node_name    = var.host_a_node_name
+  node_name    = var.node_name
   vm_id        = 640
   unprivileged = true
   started      = true
 
   operating_system {
-    template_file_id = proxmox_virtual_environment_download_file.ubuntu_lxc_template.id
-    type             = "ubuntu"
+  template_file_id = "local:vztmpl/ubuntu-24.04-standard_24.04-2_amd64.tar.zst"
+  type             = "ubuntu"
   }
 
   cpu {
@@ -25,7 +18,7 @@ resource "proxmox_virtual_environment_container" "pihole" {
   }
 
   disk {
-    datastore_id = var.host_a_datastore
+    datastore_id = var.datastore
     size         = 4
   }
 

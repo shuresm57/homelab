@@ -2,7 +2,7 @@ name: Terraform CI
 
 on:
   pull_request:
-    branches: [ "main" ]
+    branches: ['main']
 
 jobs:
   checkov:
@@ -47,3 +47,6 @@ jobs:
 
       - name: Validate
         run: terraform validate
+
+      - name: Plan
+        run: terraform plan
