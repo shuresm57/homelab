@@ -107,3 +107,13 @@ variable "hostpci_mappings" {
   type    = list(string)
   default = []
 }
+
+variable "agent_enabled" {
+  type = bool
+  default = false
+}
+
+variable "scsi_hardware" {
+  type = string
+  default = null
+}

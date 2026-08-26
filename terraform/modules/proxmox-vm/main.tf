@@ -4,6 +4,7 @@ resource "proxmox_virtual_environment_vm" "this" {
   vm_id      = var.vm_id
   bios       = "ovmf"
   machine    = "q35"
+  scsi_hardware = var.scsi_hardware
   boot_order = var.boot_order
 
   cpu {
@@ -50,7 +51,7 @@ resource "proxmox_virtual_environment_vm" "this" {
   }
 
   agent {
-    enabled = false
+    enabled = var.agent_enabled
   }
 
   initialization {

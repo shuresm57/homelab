@@ -485,7 +485,7 @@ variable "scsi_hardware" {
 ```
 
 📄 **`terraform/modules/proxmox-vm/main.tf`** — change two things
-```hcl
+```bash 
 resource "proxmox_virtual_environment_vm" "this" {
   # ...
   scsi_hardware = var.scsi_hardware      # add, next to bios/machine
