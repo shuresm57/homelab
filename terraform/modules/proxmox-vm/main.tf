@@ -1,11 +1,11 @@
 resource "proxmox_virtual_environment_vm" "this" {
-  name       = var.name
-  node_name  = var.node_name
-  vm_id      = var.vm_id
-  bios       = "ovmf"
-  machine    = "q35"
+  name          = var.name
+  node_name     = var.node_name
+  vm_id         = var.vm_id
+  bios          = "ovmf"
+  machine       = "q35"
   scsi_hardware = var.scsi_hardware
-  boot_order = var.boot_order
+  boot_order    = var.boot_order
 
   cpu {
     cores = var.cores

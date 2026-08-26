@@ -109,11 +109,11 @@ variable "hostpci_mappings" {
 }
 
 variable "agent_enabled" {
-  type = bool
+  type    = bool
   default = false
 }
 
 variable "scsi_hardware" {
-  type = string
+  type    = string
   default = null
 }
