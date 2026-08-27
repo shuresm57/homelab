@@ -49,3 +49,9 @@ terraform.rc
 ### Ansible ###
 *.retry
 
+
+### Terraform-generated credentials (never commit)
+terraform/hosts/clusters/talos/generated/
+kubeconfig
+talosconfig
+*.kubeconfig

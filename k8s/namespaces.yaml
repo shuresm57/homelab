@@ -1,0 +1,18 @@
+# Talos enforces PodSecurity "baseline" on every namespace except kube-system.
+# Both of these run infrastructure that baseline forbids, so they need an
+# explicit privileged label or their pods are rejected at admission:
+#   - local-path-provisioner spawns helper pods with a hostPath volume
+#   - metallb speaker/frr-k8s need hostNetwork, hostPorts and NET_RAW/NET_ADMIN
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: local-path-storage
+  labels:
+    pod-security.kubernetes.io/enforce: privileged
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: metallb-system
+  labels:
+    pod-security.kubernetes.io/enforce: privileged

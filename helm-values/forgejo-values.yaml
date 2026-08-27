@@ -1,0 +1,28 @@
+nodeSelector:
+  workload: git
+
+persistence:
+  enabled: true
+  storageClass: local-path
+  size: 20Gi
+
+# MetalLB only hands the same IP to two services when both carry an identical
+# allow-shared-ip key (and a matching externalTrafficPolicy, here the default
+# "Cluster"). Without it the second service sits at <pending> forever.
+service:
+  http:
+    type: LoadBalancer
+    loadBalancerIP: 192.168.0.71
+    annotations:
+      metallb.universe.tf/allow-shared-ip: forgejo
+  ssh:
+    type: LoadBalancer
+    loadBalancerIP: 192.168.0.71
+    annotations:
+      metallb.universe.tf/allow-shared-ip: forgejo
+
+gitea:
+  config:
+    server:
+      DOMAIN: git.home.arpa
+      ROOT_URL: http://git.home.arpa/

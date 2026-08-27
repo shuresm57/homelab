@@ -2,6 +2,9 @@ all:
   hosts:
     localhost:
       ansible_connection: local
+      # Modules must run inside Homebrew's ansible venv, which is where PyYAML
+      # and the kubernetes client live. Bare /opt/homebrew/bin/python3 has neither.
+      ansible_python_interpreter: /opt/homebrew/opt/ansible/libexec/bin/python
   children:
     ollama:
       hosts:

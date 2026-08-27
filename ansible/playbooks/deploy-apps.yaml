@@ -1,0 +1,31 @@
+- hosts: localhost
+  gather_facts: false
+  vars:
+    kubeconfig: "{{ playbook_dir }}/../../terraform/hosts/clusters/talos/generated/kubeconfig"
+  tasks:
+    - name: Apply cluster manifests
+      kubernetes.core.k8s:
+        src: "{{ playbook_dir }}/../../k8s/{{ item }}"
+        state: present
+        kubeconfig: "{{ kubeconfig }}"
+      loop:
+        - namespaces.yaml
+        - metallb-pool.yaml
+
+    - name: Add chart repos
+      kubernetes.core.helm_repository:
+        name: "{{ item.name }}"
+        repo_url: "{{ item.url }}"
+      loop:
+        - { name: nextcloud,             url: "https://nextcloud.github.io/helm/" }
+        - { name: prometheus-community,  url: "https://prometheus-community.github.io/helm-charts" }
+
+    - name: Forgejo
+      kubernetes.core.helm:
+        name: forgejo
+        # Forgejo publishes the chart only as an OCI artifact; the classic
+        # code.forgejo.org helm repos all serve an empty index.
+        chart_ref: oci://code.forgejo.org/forgejo-helm/forgejo
+        release_namespace: git
+        values_files: ["{{ playbook_dir }}/../../helm-values/forgejo-values.yaml"]
+        kubeconfig: "{{ kubeconfig }}"
