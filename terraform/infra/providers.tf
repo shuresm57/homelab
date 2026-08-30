@@ -14,7 +14,10 @@ provider "proxmox" {
   endpoint  = var.pve_hosts.hp16.endpoint
   api_token = var.pve_hosts.hp16.api_token
   insecure  = true
-  ssh { agent = true }
+  ssh {
+    agent    = true
+    username = "root"
+  }
 }
 
 provider "proxmox" {
@@ -22,7 +25,10 @@ provider "proxmox" {
   endpoint  = var.pve_hosts.hp32.endpoint
   api_token = var.pve_hosts.hp32.api_token
   insecure  = true
-  ssh { agent = true }
+  ssh {
+    agent    = true
+    username = "root"
+  }
 }
 
 provider "proxmox" {
@@ -30,6 +36,9 @@ provider "proxmox" {
   endpoint  = var.pve_hosts.dell.endpoint
   api_token = var.pve_hosts.dell.api_token
   insecure  = true
-  ssh { agent = true }
+  ssh {
+    agent    = true
+    username = "root"
+  }
 }
 

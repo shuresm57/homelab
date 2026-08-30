@@ -17,8 +17,8 @@ locals {
       }
     }
 
-    dell = {}   # TODO 
-    hp32 = {}   # TODO
+    dell = {} # TODO 
+    hp32 = {} # TODO
   }
 }
 
