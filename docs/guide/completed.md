@@ -1,7 +1,7 @@
 # Completed — what's already built
 
-Lifted out of [the build guide](proxmox-talos-k8s-build-guide.md) so that guide only contains work
-that's still ahead of you. This is a record, not instructions: don't re-run any of it. Addresses
+Lifted out of the old Talos build guide, which has since been deleted along with the cluster it
+described. This is a record, not instructions: don't re-run any of it. Addresses
 and names live in [network-inventory.md](../network-inventory.md).
 
 Verified against Terraform state serial 22 (`terraform/hosts/dell/terraform.tfstate`), not from

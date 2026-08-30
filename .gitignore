@@ -55,3 +55,6 @@ terraform/hosts/clusters/talos/generated/
 kubeconfig
 talosconfig
 *.kubeconfig
+
+### Local scratch notes (may contain hashes/paths)
+docs/commands.md
