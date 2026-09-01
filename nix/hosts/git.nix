@@ -32,18 +32,19 @@
   boot.supportedFilesystems = [ "exfat" ];
 
   systemd.services.forgejo-backup = {
-    script = ''
-      export FORGEJO_WORK_DIR=/var/lib/forgejo
-      export FORGEJO_CUSTOM=/var/lib/forgejo/custom
-      export HOME=/var/lib/forgejo
-      ${config.services.forgejo.package}/bin/forgejo dump -c /var/lib/forgejo/custom/conf/app.ini --file /mnt/backup1/forgejo-backup-$(date +%F).zip
-    '';
-    serviceConfig = {
-      User = "forgejo";
-      Type = "oneshot";
-    };
-    requires = [ "mnt-backup1.mount" ];
-    after = [ "mnt-backup1.mount" ];
+  script = ''
+    export FORGEJO_WORK_DIR=/var/lib/forgejo
+    export FORGEJO_CUSTOM=/var/lib/forgejo/custom
+    export HOME=/var/lib/forgejo
+    ${config.services.forgejo.package}/bin/forgejo dump -c /var/lib/forgejo/custom/conf/app.ini --file /mnt/backup1/forgejo-backup-$(date +%F).zip
+    cp /mnt/backup1/forgejo-backup-$(date +%F).zip /mnt/backup2/
+  '';
+  serviceConfig = {
+    User = "forgejo";
+    Type = "oneshot";
+  };
+  requires = [ "mnt-backup1.mount" "mnt-backup2.mount" ];
+  after = [ "mnt-backup1.mount" "mnt-backup2.mount" ];
   };
 
   systemd.timers.forgejo-backup = {
@@ -53,17 +54,20 @@
       Persistent = true;
     };
   };
+  
+security.acme = {
+  acceptTerms = true;
+  defaults.email = "vstov@protonmail.com";
+};
 
-  services.nginx = {
-    enable = true;
-    recommendedProxySettings = true;
-    recommendedGzipSettings  = true;
-    virtualHosts."git.home.arpa" = {
-      locations."/" = {
-        proxyPass = "http://127.0.0.1:3000";
-      };
-    };
+services.nginx.virtualHosts."git.home.arpa" = {
+  serverAliases = [ "git.vstov.dk" ];
+  forceSSL = true;
+  enableACME = true;
+  locations."/" = {
+    proxyPass = "http://127.0.0.1:3000";
   };
+};
 
   networking.firewall.allowedTCPPorts = [ 80 22 ];
 }
