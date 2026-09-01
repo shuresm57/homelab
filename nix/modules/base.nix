@@ -43,7 +43,7 @@
   services.cron = {
       enable = true;
       systemCronJobs = [
-
+        "0 3 * * * FORGEJO_WORK_DIR=/var/lib/forgejo FORGEJO_CUSTOM=/var/lib/forgejo/custom HOME=/var/lib/forgejo /nix/store/hx0mqag63yf7z6gldvm32bicp22c8l7i-forgejo-lts-15.0.7/bin/forgejo dump -c /var/lib/forgejo/custom/conf/app.ini --file /mnt/backup1/forgejo-backup-$(date +\%F).zip"
       ];
     };
 
