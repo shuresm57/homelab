@@ -40,16 +40,13 @@
     };
   };
   
-  services.cron = {
-      enable = true;
-      systemCronJobs = [
-        "0 3 * * * FORGEJO_WORK_DIR=/var/lib/forgejo FORGEJO_CUSTOM=/var/lib/forgejo/custom HOME=/var/lib/forgejo /nix/store/hx0mqag63yf7z6gldvm32bicp22c8l7i-forgejo-lts-15.0.7/bin/forgejo dump -c /var/lib/forgejo/custom/conf/app.ini --file /mnt/backup1/forgejo-backup-$(date +\%F).zip"
-      ];
-    };
+ 
 
   users.users.root.openssh.authorizedKeys.keys = [
     "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPTNPKoS0uzB2lVA+I1BsZvB1ugFNw5hm2P/8LnjfR5K vss@Valdemars-MacBook-Pro.local"
   ];
+
+  
 
   time.timeZone = "Europe/Copenhagen";
 
