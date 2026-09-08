@@ -30,6 +30,8 @@ in
     pkgs.pihole
   ];
 
+  systemd.services.pihole-ftl-setup.serviceConfig.SuccessExitStatus = [ 1 ];
+
   services.pihole-ftl = {
     enable = true;
 

@@ -39,10 +39,14 @@
       PermitRootLogin        = "prohibit-password";
     };
   };
+  
+ 
 
   users.users.root.openssh.authorizedKeys.keys = [
     "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPTNPKoS0uzB2lVA+I1BsZvB1ugFNw5hm2P/8LnjfR5K vss@Valdemars-MacBook-Pro.local"
   ];
+
+  
 
   time.timeZone = "Europe/Copenhagen";
 
@@ -63,6 +67,7 @@
     dig
     tree
     tmux
+    usbutils
   ];
 
   system.stateVersion = "25.05";
