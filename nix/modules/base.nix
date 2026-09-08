@@ -3,7 +3,9 @@
   # virtio drivers in the initrd, so the scsi0 disk is found at boot.
   imports = [ "${modulesPath}/profiles/qemu-guest.nix" ];
 
-  # --- disk layout, matching the nixos-generators 'hybrid' image ------------
+  # ==========================================================================
+  # DISK LAYOUT, MATCHING THE NIXOS-GENERATORS 'HYBRID' IMAGE
+  # ==========================================================================
   fileSystems."/" = {
     device     = "/dev/disk/by-label/nixos";
     fsType     = "ext4";

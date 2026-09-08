@@ -14,6 +14,14 @@ locals {
         memory_mb    = 4096
         disk_size_gb = 40
         ip           = "192.168.0.61/24"
+
+        # The two sticks the Forgejo dumps land on; see nix/hosts/git.nix, which
+        # mounts them by UUID. Order matters: index 0 is usb0. Identified by
+        # port path, so they have to stay in these physical ports on hp16.
+        usb_devices = [
+          { host = "2-3", usb3 = true }, # LaCie Rugged Mini -> /mnt/backup1
+          { host = "2-7", usb3 = true }, # Samsung Flash FIT -> /mnt/backup2
+        ]
       }
     }
 
@@ -38,6 +46,9 @@ module "hp16" {
   disk_image_id = var.nixos_image_file_id
   ipv4_address  = each.value.ip
   dns_servers   = ["192.168.0.64", "192.168.0.1"]
+
+  # Only some VMs have USB devices, so the key is absent from the rest.
+  usb_devices = try(each.value.usb_devices, [])
 
   user_account = {
     username = "nixos"

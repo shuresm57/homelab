@@ -46,6 +46,16 @@ resource "proxmox_virtual_environment_vm" "this" {
     }
   }
 
+  # A list: index 0 lands in usb0, 1 in usb1, and so on.
+  dynamic "usb" {
+    for_each = var.usb_devices
+    content {
+      host    = usb.value.host
+      mapping = usb.value.mapping
+      usb3    = usb.value.usb3
+    }
+  }
+
   network_device {
     bridge = "vmbr0"
   }

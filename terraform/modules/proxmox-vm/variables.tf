@@ -117,3 +117,18 @@ variable "scsi_hardware" {
   type    = string
   default = null
 }
+
+variable "usb_devices" {
+  description = "Host USB devices passed to the VM, in order: index 0 becomes usb0, 1 becomes usb1, ..."
+  type = list(object({
+    host    = optional(string)
+    mapping = optional(string)
+    usb3    = optional(bool, false)
+  }))
+  default = []
+
+  validation {
+    condition     = alltrue([for d in var.usb_devices : (d.host == null) != (d.mapping == null)])
+    error_message = "Each usb_devices entry needs exactly one of host or mapping."
+  }
+}
