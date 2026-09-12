@@ -1,14 +1,19 @@
-{ config, pkgs, lib, modulesPath, ... }:
 {
+  config,
+  pkgs,
+  lib,
+  modulesPath,
+  ...
+}: {
   # virtio drivers in the initrd, so the scsi0 disk is found at boot.
-  imports = [ "${modulesPath}/profiles/qemu-guest.nix" ];
+  imports = ["${modulesPath}/profiles/qemu-guest.nix"];
 
   # ==========================================================================
   # DISK LAYOUT, MATCHING THE NIXOS-GENERATORS 'HYBRID' IMAGE
   # ==========================================================================
   fileSystems."/" = {
-    device     = "/dev/disk/by-label/nixos";
-    fsType     = "ext4";
+    device = "/dev/disk/by-label/nixos";
+    fsType = "ext4";
     autoResize = true;
   };
 
@@ -38,26 +43,22 @@
     enable = true;
     settings = {
       PasswordAuthentication = false;
-      PermitRootLogin        = "prohibit-password";
+      PermitRootLogin = "prohibit-password";
     };
   };
-  
- 
 
   users.users.root.openssh.authorizedKeys.keys = [
     "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPTNPKoS0uzB2lVA+I1BsZvB1ugFNw5hm2P/8LnjfR5K vss@Valdemars-MacBook-Pro.local"
   ];
 
-  
-
   time.timeZone = "Europe/Copenhagen";
 
-  nix.settings.experimental-features = [ "nix-command" "flakes" ];
+  nix.settings.experimental-features = ["nix-command" "flakes"];
 
   nix.gc = {
     automatic = true;
-    dates     = "weekly";
-    options   = "--delete-older-than 30d";
+    dates = "weekly";
+    options = "--delete-older-than 30d";
   };
 
   environment.systemPackages = with pkgs; [

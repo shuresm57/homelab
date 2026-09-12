@@ -1,5 +1,8 @@
-{ config, lib, ... }:
 {
+  config,
+  lib,
+  ...
+}: {
   options.homelab.docker.enable =
     lib.mkEnableOption "Docker as the OCI container backend";
 
