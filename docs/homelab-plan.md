@@ -8,8 +8,10 @@ which is the part that teaches. Read the "What to notice" blocks even when the c
 that is where the reasoning lives.
 
 **Every option name should be checked against `search.nixos.org/options`** before you use it.
-NixOS module options move between releases, and this guide is written against **nixpkgs 25.05**.
-Where I am less certain, the text says so.
+NixOS module options move between releases, and this guide is written against **nixpkgs 26.05**,
+which is what `nix/flake.nix` pins. Where I am less certain, the text says so. Options belonging
+to a third-party module get checked against that module's own docs instead — for Nixarr, that is
+`nixarr.com/nixos-options`.
 
 ---
 
@@ -26,13 +28,12 @@ of the system and there is no compose file to drift. It adds no new language.
 
 ```
 hp16 — 16 GB                                    STAGE 1
-    ├─ dns   NixOS   2 GB   .64   Pi-hole (Docker)
+    ├─ dns   NixOS   2 GB   .64   services.pihole-ftl + pihole-web
     └─ git   NixOS   4 GB   .61   services.forgejo + nginx
 
 dell — 96 GB, RTX 4000, 12 TB                   STAGE 2
-    ├─ ollama    NixOS   48 GB   .67   native ollama + open-webui (Docker)
-    ├─ truenas   TrueNAS 16 GB   .65   HBA passthrough
-    └─ jellyfin  NixOS    8 GB   .66
+    ├─ ollama  NixOS   48 GB   .67   native ollama + open-webui (Docker)
+    └─ media   NixOS   10 GB   .66   nixarr stack, ZFS RAIDZ1 over the HBA
 
 hp32 — 32 GB                                    STAGE 3
     ├─ monitoring  NixOS   8 GB   .68   grafana + prometheus
@@ -41,10 +42,10 @@ hp32 — 32 GB                                    STAGE 3
 
 | | | | |
 |---|---|---|---|
-| `.60` `.62` `.63` | reserved — future k8s | `.66` | jellyfin |
+| `.60` `.62` `.63` | reserved — future k8s | `.66` | media |
 | `.61` | git | `.67` | ollama |
 | `.64` | dns *(unchanged)* | `.68` | monitoring |
-| `.65` | truenas | `.69` | backup |
+| `.65` | free — was truenas | `.69` | backup |
 
 hp16 uses 6 of 16 GB, hp32 12 of 32. That headroom is where Kubernetes goes later.
 
@@ -52,126 +53,47 @@ hp16 uses 6 of 16 GB, hp32 12 of 32. That headroom is where Kubernetes goes late
 
 # Stage 1 — hp16: DNS and Forgejo — **built**
 
-Both VMs are running. `dns` (`.64`) serves Pi-hole natively; `git` (`.61`) serves Forgejo behind
-nginx. The configuration **is** the documentation now — read the files rather than a guide that
-can drift from them:
-
-```
-terraform/infra/        providers.tf  variables.tf  main.tf  terraform.tfvars (gitignored)
-terraform/modules/proxmox-vm/
-nix/flake.nix           nixpkgs pinned to nixos-26.05
-nix/modules/base.nix    cloud-init, ssh, disk layout, bootloader
-nix/hosts/dns.nix       services.pihole-ftl + services.pihole-web
-nix/hosts/git.nix       services.forgejo + nginx
-```
-
-Operational commands live in `docs/commands.md` (gitignored, local only).
-
-## What this guide got wrong
-
-Recorded because each one cost real time, and Stages 2 and 3 repeat the same patterns.
-
-**Pi-hole does not need Docker.** This guide ran it as a container because `services.pihole` does
-not exist in nixpkgs **25.05**. It does exist in **25.11+** as `services.pihole-ftl` +
-`services.pihole-web`. The container version caused four separate failures — port 53 contention,
-an image that could not be pulled without DNS, queries silently dropped by dnsmasq's `LOCAL` mode
-behind Docker's bridge NAT, and no declarative password. Bumping the flake to `nixos-26.05` and
-using the native module removed all four. **When something has no NixOS module, check whether your
-pin is simply old before reaching for a container.**
-
-**Never disable `systemd-resolved` to free port 53.** Use:
-
-```nix
-services.resolved.settings.Resolve.DNSStubListener = false;
-```
-
-`services.resolved.enable = false` leaves the machine with *no resolver at all*, which means it
-cannot fetch the closure that would fix it. That is an unrecoverable deadlock without an
-out-of-band edit to `/etc/resolv.conf`. Also set `networking.nameservers` to the router: a DNS
-server that resolves through itself cannot bootstrap.
-
-**The Terraform provider needs an SSH username.** Token auth carries no SSH identity, so
-`ssh { agent = true; }` alone connects as `""` and fails at disk creation:
-
-```hcl
-ssh { agent = true; username = "root"; }
-```
-
-**A qcow2 goes in the `import` datastore, not `iso`.** PVE's `$ISO_EXT_RE` accepts only `.iso` and
-`.img`; a `.qcow2` under `local:iso/` fails with *"unable to parse directory volume name"* and is
-invisible to `pvesm list`. Use `local:import/nixos-base.qcow2`.
-
-**Two more that only bite from macOS:**
-
-- `nixos-rebuild` needs `--no-reexec`, or it tries to build an `x86_64-linux` copy of itself
-  locally and dies on platform mismatch. It also needs `--build-host`, since macOS cannot build
-  Linux derivations. Evaluation is platform-independent and works fine locally.
-- `nixos-generate -c` resolves `<nixpkgs>` through `NIX_PATH`, the pre-flakes mechanism. On a
-  flakes-only install that is empty. Pin it to the rev from `flake.lock` so the image matches
-  the flake.
-
-## What the code cannot tell you
-
-**Provider aliases cannot be dynamic.** Terraform resolves providers before evaluating `for_each`,
-so `provider = proxmox[each.value.host]` is impossible. That single constraint is why `main.tf`
-has one `module` block per host, and why the VM map is nested by host rather than flat and
-filtered — the nesting mirrors a limitation you cannot design around.
-
-**`for_each` over a map, never `count`.** With `count`, resources are addressed by index, so
-deleting one VM renumbers the rest and destroys machines you did not touch. `for_each` gives you
-`module.hp16["dns"]`, stable forever.
-
-**The image and the flake are two separate evaluations.** `nixos-generators` supplies
-`fileSystems` and a bootloader while building the image; your flake does not import that module,
-so `base.nix` must declare them itself or `nixos-rebuild` fails with *"The `fileSystems` option
-does not specify your root file system."* Match the bootloader to the firmware — the Terraform
-module sets `bios = "ovmf"`, so it is systemd-boot and an ESP at `/boot`, not BIOS GRUB.
-
-**`system.stateVersion` is not a version to bump.** It records which release's *stateful* defaults
-this machine expects, so upgrading nixpkgs cannot silently migrate data underneath you. It stayed
-`"25.05"` through the jump to 26.05, correctly.
-
-**Generated config beats copied config.** `dns.nix` holds one `records` attrset and derives
-Pi-hole's host list from it:
-
-```nix
-hosts = lib.mapAttrsToList (name: ip: "${ip} ${name}") records;
-```
-
-Addresses stop being a hand-copied list that drifts from `network-inventory.md`.
-
-**Secrets have a declarative path, usually.** The Pi-hole admin password is a BALLOON-SHA256 hash
-in `dns.nix`, generated without ever writing to disk:
-
-```bash
-FTLCONF_webserver_api_password="$PW" pihole-FTL --config webserver.api.pwhash
-```
-
-The module sets `misc.readOnly = true` so runtime changes cannot silently diverge from config —
-which is why the password could not be set with `pihole setpassword`.
+Done, and moved out of this guide: `dns` (`.64`) and `git` (`.61`) are running, and the record
+of how — plus every lesson the first build taught — now lives in
+[guide/completed.md](guide/completed.md). Nothing in this section is left to do.
 
 # Stage 2 — dell
 
-## 2.1 Two fixes before any Dell apply
+## 2.1 Retire TrueNAS before any Dell apply
+
+TrueNAS is out of the design. The pool it was going to serve over NFS is built directly on the
+media VM instead (§2.4), so the `truenas` guest is deleted and its HBA moves to `media`.
 
 ```hcl
-# terraform/hosts/dell/vms.tf -- DELETE these two lines from module "truenas"
-  iso_file_id      = proxmox_download_file.truenas_iso.id
-  boot_order       = ["ide2", "scsi0"]
+# terraform/hosts/dell/vms.tf -- delete module "truenas" entirely,
+# and move this line onto the new media VM:
+  hostpci_mappings = ["truenas-it"]
+
+# terraform/hosts/dell/images.tf -- delete, nothing references it any more:
+  resource "proxmox_download_file" "truenas_iso" { ... }
 ```
 
-> **Why this is urgent.** `terraform plan` on the Dell currently wants to re-attach the install
-> ISO. Because `boot_order` puts the CD first, the next boot of that VM lands in the **TrueNAS
-> installer** rather than your installed system. With `iso_file_id` null the module's
-> `dynamic "cdrom"` block emits nothing, and with `boot_order` null it boots `scsi0`.
+> **Why the order matters.** Do not `apply` this root while `module "truenas"` still exists.
+> `terraform plan` currently wants to re-attach the install ISO, and because `boot_order` puts
+> the CD first, the next boot of that VM lands in the **TrueNAS installer** rather than the
+> installed system. Deleting the module removes the question; repairing it, as an earlier
+> version of this guide suggested, is wasted work on a machine you are about to destroy.
 > Full diagnosis: `docs/guide/completed.md` → "Known drift".
+>
+> **Back up the state file first.** The Dell's guests live in
+> `terraform/hosts/dell/terraform.tfstate`, separate from `infra/` — see §2.2.
+>
+> **The mapping name stays `truenas-it`.** It is a Proxmox resource mapping bound to the HBA,
+> not to a VM; renaming it is cosmetic and costs another apply. `completed.md` lesson 1 explains
+> why a named mapping is what makes passthrough work under token auth.
 
 Also flip `dns_servers` in `terraform/modules/proxmox-vm/variables.tf` to
 `["192.168.0.64", "192.168.0.1"]` — it is currently router-first.
 
 ## 2.2 Move the Dell into `infra/`
 
-The Dell's `ollama` and `truenas` are live, in a *different* state file.
+The Dell's `ollama` is live, in a *different* state file. Do §2.1 first, so that `truenas`
+is already gone and there is one guest to move rather than two.
 
 ```bash
 cp terraform/hosts/dell/terraform.tfstate{,.bak}
@@ -188,11 +110,16 @@ terraform state mv -state-out=../../infra/terraform.tfstate \
 >   state files needs `terraform state mv -state-out=`, or `state rm` plus `import`.
 > - **Back up both state files first.** This is the one operation in the guide that can lose track
 >   of running machines.
-> - Add `ollama` and `truenas` to `locals.vms` with `host = "dell"` and add a `module "dell"` block
->   mirroring `module "hp16"` but with `providers = { proxmox = proxmox.dell }`. The exact target
->   address in the command above is whatever that module block produces —
->   `terraform state list` in each root tells you the real names.
-> - **Done when `terraform plan` in `infra/` says "No changes"** against two running machines.
+> - Add `ollama` to `locals.vms` with `host = "dell"` and add a `module "dell"` block mirroring
+>   `module "hp16"` but with `providers = { proxmox = proxmox.dell }`. The exact target address
+>   in the command above is whatever that module block produces — `terraform state list` in
+>   each root tells you the real names.
+> - **`media` is declared here, not migrated.** It has no existing state, so it goes straight
+>   into `locals.vms.dell` as a new entry — `vm_id` 701 or 703 (the Dell uses the 700 block;
+>   700 and 702 are taken), 10240 MB, `ip = "192.168.0.66/24"`, plus
+>   `hostpci_mappings = ["truenas-it"]` from §2.1. Note it needs the NixOS base qcow2, which
+>   currently exists only on hp16 — copy it to the Dell's `local:import/` first.
+> - **Done when `terraform plan` in `infra/` says "No changes"** against the running machines.
 
 ## 2.3 `nix/hosts/ollama.nix`
 
@@ -253,36 +180,183 @@ terraform state mv -state-out=../../infra/terraform.tfstate \
 > - Proxmox side: create an `ollama-gpu` **resource mapping** and add it to `hostpci_mappings`.
 >   `completed.md` lesson 1 explains why a mapping works with token auth where a raw PCI ID does not.
 
-## 2.4–2.5 TrueNAS and Jellyfin
+## 2.4 `media` — Nixarr on local ZFS
 
-TrueNAS is unchanged; the remaining work is the ZFS pool, **blocked on a third drive** for RAIDZ1.
+One VM at `.66` runs the whole media stack and owns the storage. [Nixarr](https://nixarr.com)
+supplies the services; ZFS on the passed-through HBA supplies the disk. There is no NAS in the
+middle any more.
+
+Nixarr is a third-party flake, so it arrives as an input rather than from nixpkgs:
 
 ```nix
-# nix/hosts/jellyfin.nix
+# nix/flake.nix
+inputs = {
+  nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
+  nixarr.url  = "github:nix-media-server/nixarr";
+  nixarr.inputs.nixpkgs.follows = "nixpkgs";
+};
+
+# mkHost gains specialArgs, so a module can reach the flake's inputs
+mkHost = name: nixpkgs.lib.nixosSystem {
+  inherit system;
+  specialArgs = { inherit inputs; };
+  modules = [ ./modules ./hosts/${name}.nix ];
+};
+```
+
+Two new modules, in the same shape as `forgejo.nix` and `pihole.nix`. Storage is its own module
+because the planned `backup` host (§3.1) will want it too:
+
+```nix
+# nix/modules/zfs.nix -- homelab.storage.zfs.{enable,hostId,pools,autoScrub,scrubInterval}
+#   sets boot.supportedFilesystems = [ "zfs" ], networking.hostId, services.zfs.autoScrub
+
+# nix/modules/media.nix
+{ config, lib, pkgs, inputs, ... }:
+{
+  imports = [ inputs.nixarr.nixosModules.default ];
+  # options.homelab.services.media = { ... };  then, under mkIf cfg.enable:
+}
+```
+
+What `homelab.services.media` should produce:
+
+```nix
+nixarr = {
+  enable   = true;
+  mediaDir = "/data/media";
+  stateDir = "/data/.state/nixarr";
+
+  vpn = {
+    enable = true;
+    # ProtonVPN wg-quick file. Never in this repo.
+    wgConf = "/data/.secret/vpn/wg.conf";
+  };
+
+  jellyfin.enable = true;   # 8096, read-only option
+  sonarr.enable   = true;   # 8989
+  radarr.enable   = true;   # 7878
+  prowlarr.enable = true;   # 9696
+  bazarr.enable   = true;   # 6767
+  seerr.enable    = true;   # 5055  -- Jellyseerr, but the option is `seerr`
+
+  qbittorrent = {
+    enable     = true;
+    vpn.enable = true;
+    peerPort   = 6881;      # webuiPort defaults to 5252
+  };
+};
+```
+
+And the host file stays thin, as the others do:
+
+```nix
+# nix/hosts/media.nix
 { ... }:
 {
-  networking.hostName = "jellyfin";
+  networking.hostName = "media";
 
-  services.jellyfin = {
+  homelab.storage.zfs = {
     enable = true;
-    openFirewall = true;
+    hostId = "<8 hex chars>";     # head -c4 /dev/urandom | od -A none -t x4
+    pools  = [ "tank" ];
   };
 
-  # Media arrives from TrueNAS once the pool exists.
-  fileSystems."/media" = {
-    device  = "192.168.0.65:/mnt/tank/media";
-    fsType  = "nfs";
-    options = [ "x-systemd.automount" "noauto" ];
-  };
+  fileSystems."/data/media"  = { device = "tank/media"; fsType = "zfs"; };
+  fileSystems."/data/.state" = { device = "tank/state"; fsType = "zfs"; };
+
+  homelab.services.media.enable = true;
 }
+```
+
+The pool itself is created once, by hand, on the VM — NixOS imports and mounts pools, it does not
+create them:
+
+```bash
+zpool create -o ashift=12 \
+  -O compression=zstd -O atime=off -O xattr=sa -O acltype=posixacl \
+  -m none tank raidz1 \
+  /dev/disk/by-id/wwn-... /dev/disk/by-id/wwn-... \
+  /dev/disk/by-id/wwn-... /dev/disk/by-id/wwn-...
+
+zfs create -o mountpoint=legacy tank/media
+zfs create -o mountpoint=legacy tank/state
 ```
 
 > **What to notice**
 >
-> - **`x-systemd.automount` + `noauto`** means the VM boots even when TrueNAS is down, mounting on
->   first access instead. Without it a missing NFS server blocks boot — a genuinely miserable
->   failure mode.
-> - Jellyfin can run before the pool exists; only the library depends on it.
+> - **`mountpoint=legacy` plus `fileSystems`, not `boot.zfs.extraPools`.** Legacy mounts join
+>   `local-fs.target`, and `systemd-tmpfiles-setup` runs after that target, so Nixarr's directory
+>   creation cannot race the pool import. With `extraPools` there is no such ordering: the
+>   tmpfiles rules can fire first and scatter directories onto the root filesystem underneath an
+>   unmounted mountpoint, where they are invisible the moment the pool mounts over them. This is
+>   the same failure the Forgejo dump has `RequiresMountsFor` for.
+> - **One dataset for media, not two.** Nixarr puts `library/` and `torrents/` *inside*
+>   `mediaDir`. ZFS datasets are separate filesystems, so a tidy-looking `tank/media` +
+>   `tank/downloads` split would silently turn every import from a hardlink into a full copy of
+>   the file.
+> - **`by-id` paths, never `/dev/sdX`.** HBA enumeration order is not stable across boots.
+> - **`xattr=sa` and `acltype=posixacl`** because Nixarr manages ownership and permissions across
+>   the whole media tree. Note Nixarr's own constraint too: every parent directory of `mediaDir`
+>   and `stateDir` must be root-owned, which is why they sit under `/data` and not under a home
+>   directory.
+> - **RAIDZ1 over four drives** gives three drives of usable capacity and survives one failure.
+> - **`networking.hostId` is mandatory for ZFS.** It records which machine last imported the
+>   pool, and is what stops two hosts importing it at once. Generate it once and never change it.
+> - **The `*arr`s deliberately stay off the VPN.** Nixarr's own docs warn that routing them
+>   through it causes indexer rate limiting. Only the download client is confined.
+> - **An assertion, not a comment, keeps the client behind the VPN:**
+>
+>   ```nix
+>   assertions = [{
+>     assertion = cfg.qbittorrent.enable -> cfg.vpn.enable;
+>     message = ''
+>       homelab.services.media.qbittorrent.enable requires vpn.enable.
+>       A torrent client must not run on the bare WAN address.
+>     '';
+>   }];
+>   ```
+>
+>   Nixarr already enforces `nixarr.qbittorrent.vpn.enable` → `nixarr.vpn.enable`. This second
+>   assertion is the one that stops the client coming up with the VPN switched off entirely,
+>   which is the mistake that actually costs you something.
+> - **`openFirewall` is not how you reach a VPN-confined service.** qBittorrent lives in the VPN
+>   network namespace; LAN access to its WebUI comes from `nixarr.vpn.exposeOnLAN` (default
+>   `true`) and `nixarr.vpn.accessibleFrom`, whose defaults already cover `192.168.0.0/24`.
+> - **The WebUI on 5252 is `qui`, not qBittorrent's own interface.** `qbittorrent.qui.enable`
+>   defaults to `true` and proxies to the native UI on an internal `8085`. Surprising once.
+> - **Wiring qBittorrent into Sonarr and Radarr declaratively takes the generic list.** There is a
+>   `settings-sync.transmission.enable` shortcut and no qBittorrent equivalent, so use
+>   `settings-sync.downloadClients` with `implementation = "QBittorrent"`. Get the field names
+>   from `nixarr show-sonarr-schemas download_client` on the host rather than guessing.
+> - **Nixarr's own flake tracks `nixos-25.11` while this repo is on `nixos-26.05`.** As a NixOS
+>   module it builds against *our* `pkgs`, so the `follows` line only avoids a second nixpkgs in
+>   the lock file. If the combination refuses to evaluate, drop that line first — it is the
+>   cheapest thing to try.
+> - **`imports` cannot be conditional.** Putting `media.nix` in `modules/default.nix` means `dns`
+>   and `git` evaluate Nixarr's option tree as well. Check it with the `drvPath` comparison from
+>   `completed.md`; if either hash moves, list `media.nix` under the `media` host in `flake.nix`
+>   instead of in the shared import list.
+
+### ProtonVPN, and the port you do not get
+
+Nixarr wants one thing from the provider: a `wg-quick` configuration file. Download it from
+Proton's account pages, from a **P2P-enabled** server — Proton only permits torrent traffic on
+some of them, and the rest simply drop it. The file contains a private key, so it belongs at
+`/data/.secret/vpn/wg.conf` on the host and never in this repository. It is the first real
+customer for the sops-nix migration in §2.6.
+
+The part worth knowing before you are confused by it: **Proton's port forwarding is NAT-PMP, and
+Nixarr cannot drive it.** The module's only port-forwarding controls are the static
+`nixarr.vpn.openTcpPorts` / `openUdpPorts` and a router-side `util-nixarr.upnp` — there is no
+NAT-PMP anywhere in it. So qBittorrent runs outbound-only: downloading works, but it is slower to
+find peers and it cannot meaningfully seed, because nothing on the internet can open a connection
+to it. Getting a real forwarded port means running `natpmpc` on a renewal loop and feeding the
+port it returns back into qBittorrent on every renewal, which is a separate piece of machinery
+and not something this module does. Decide that you do not need it before assuming it works.
+
+`nixarr.vpn.vpnTestService.enable` exists precisely to check the tunnel and any forwarded port
+before trusting it with traffic. Use it once.
 
 ## 2.6 Ansible leaves
 
@@ -303,6 +377,10 @@ sops.secrets.webui-secret-key = { };
 >
 > - Secrets stay **encrypted in git** and are decrypted into `/run/secrets/` at activation, owned
 >   by the service that needs them. They never appear in the Nix store, which is world-readable.
+> - **The ProtonVPN `wg.conf` from §2.4 is the first secret that genuinely needs this.** It sits
+>   at `/data/.secret/vpn/wg.conf`, placed by hand, outside the repo — which means it is not
+>   reproducible and not backed up with everything else. `nixarr.vpn.wgConf` takes a path, so it
+>   can point at `config.sops.secrets.wg-conf.path` the moment this lands.
 
 ---
 
@@ -424,17 +502,19 @@ services.k3s = {
 
 # Verification
 
-**Stage 1**
-1. `terraform plan` in `infra/` clean; both VMs answer SSH
-2. `nixos-rebuild switch --target-host` applies a change and `--rollback` reverses it
-3. `dig git.home.arpa @192.168.0.64` resolves from another machine, and a blocked domain is still
-   blocked — **verify before destroying the old Pi-hole LXC**
-4. Forgejo serves at `git.home.arpa`, a push succeeds, and the repo survives a VM reboot
+**Stage 1** — done; see [guide/completed.md](guide/completed.md).
 
 **Stage 2**
-5. `terraform plan` reports "No changes" after the state move
-6. TrueNAS reboots into TrueNAS, not the installer
-7. `nvidia-smi` inside the ollama VM sees the RTX 4000; `ollama list` shows declared models
+1. `terraform plan` reports "No changes" after the state move
+2. `nvidia-smi` inside the ollama VM sees the RTX 4000; `ollama list` shows declared models
+3. `lsblk` on `media` shows all four HBA disks, and `zpool status tank` reports `ONLINE`
+4. `findmnt /data/media /data/.state` says `zfs` for both — if not, Nixarr has written into the
+   root filesystem underneath a mountpoint and those directories need moving before use
+5. Every web UI answers: jellyfin 8096, sonarr 8989, radarr 7878, prowlarr 9696, bazarr 6767,
+   seerr 5055, qbittorrent 5252
+6. `nixarr.vpn.vpnTestService` confirms the tunnel, **before** qBittorrent is given anything to do
+7. Enabling `qbittorrent` with `vpn.enable = false` fails evaluation with the assertion message,
+   not at runtime
 
 **Stage 3**
 8. Grafana shows `node_exporter` metrics from every host
@@ -462,7 +542,9 @@ services.k3s = {
 | NVIDIA on NixOS | NixOS Wiki → *NVIDIA* |
 | restic, including **restore** | `restic.readthedocs.io` → *Getting Started* and *Restoring* |
 | Secrets | `github.com/Mic92/sops-nix` README; `getsops.io` for age keys |
+| Nixarr | `nixarr.com/nixos-options` for every option; `nixarr.com/wiki` for worked examples |
+| ZFS | `openzfs.github.io/openzfs-docs` → *Basic Concepts*, then the NixOS manual on `boot.zfs` |
 
 Already in this repo: `docs/network-inventory.md` owns every address, and
-`docs/guide/completed.md` records what shipped plus three lessons that superseded the old guide —
-read its **"Known drift"** section before your first Dell `apply`.
+`docs/guide/completed.md` records what shipped plus the fifteen lessons the first two builds
+taught — read its **"Known drift"** section before your first Dell `apply`.

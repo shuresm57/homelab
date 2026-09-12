@@ -80,13 +80,16 @@ multi-GB image.
 
 ---
 
-## TrueNAS
+## TrueNAS — built, then retired
 
 TrueNAS SCALE **25.10.5** (Goldeye) installed onto the 32GB boot disk; web UI reachable at
 `192.168.0.65`.
 
-Not done, and tracked in the main guide: the ZFS pool itself, which is **blocked on the third
-drive** for a 3-disk RAIDZ1, plus the `media`/`downloads` datasets and the NFS export.
+**This guest is being deleted.** The pool never got built — it was blocked on a third drive, and
+by the time the fourth arrived the design had changed: the ZFS pool now lives directly on the
+`media` VM, which takes over the HBA passthrough, and nothing serves NFS any more. See
+[homelab-plan.md](../homelab-plan.md) §2.1 for the retirement and §2.4 for what replaced it.
+The section below still matters, because you have to get past it to delete the VM safely.
 
 ### ⚠️ Known drift — do not `apply` the Dell without reading this
 
@@ -117,6 +120,82 @@ it costs nothing and you'll want it if you ever rebuild.
 
 (The plan also wants to add `initialization.datastore_id = "local-lvm"`, which is harmless — that
 attribute simply wasn't recorded in state when the VM was created.)
+
+---
+
+## hp16 — dns and git
+
+Both VMs are running. `dns` (`.64`) serves Pi-hole natively; `git` (`.61`) serves Forgejo behind
+nginx. The configuration **is** the documentation now — read the files rather than a guide that
+can drift from them:
+
+```
+terraform/infra/          providers.tf  variables.tf  main.tf  terraform.tfvars (gitignored)
+terraform/modules/proxmox-vm/
+nix/flake.nix             nixpkgs pinned to nixos-26.05
+nix/data/network.nix      host -> IP inventory
+nix/modules/base.nix      cloud-init, ssh, disk layout, bootloader
+nix/modules/forgejo.nix   homelab.services.forgejo
+nix/modules/pihole.nix    homelab.services.pihole
+nix/hosts/dns.nix         turns Pi-hole on
+nix/hosts/git.nix         turns Forgejo on, declares the two backup sticks
+```
+
+Operational commands live in `docs/commands.md` (gitignored, local only).
+
+---
+
+## The Nix module layer
+
+`nix/` started as two flat host files. It is now a small module system, and the shape is worth
+knowing before you add a fourth host.
+
+**Every host imports every module.** `nix/modules/default.nix` is a bare `imports` list pulled in
+by `mkHost`, and each module declares its own `homelab.*` options with `mkEnableOption` and wraps
+its body in `config = lib.mkIf cfg.enable`. A host file is then hostname, hardware, and a few
+option values — `nix/hosts/git.nix` went from 69 lines to 36 this way. The one rule this imposes:
+a module that is imported everywhere **must** be gated, which is why `docker.nix` grew a
+`homelab.docker.enable` flag it did not have when nothing imported it.
+
+**`nix/data/network.nix` is the host→IP table.** `homelab.services.pihole.records` defaults to
+it, so Pi-hole's local DNS is generated from the same file a future host would read.
+
+**The Forgejo backup is upstream's now.** It used to be a hand-written
+`systemd.services.forgejo-backup` shelling out to `forgejo dump`. It is `services.forgejo.dump`,
+which brought two things the hand-rolled version never had:
+
+- **Retention.** The module emits `d '<backupDir>' 0750 forgejo forgejo <age> -`, so
+  systemd-tmpfiles prunes old archives. The old script kept every zip forever, on both sticks.
+- **A name that does not collide.** The old script evaluated `$(date +%F)` twice — once for the
+  dump and once for the copy — so a run crossing midnight copied a file that did not exist.
+  Leaving `dump.file` null lets Forgejo timestamp each archive itself.
+
+Two things upstream does *not* give you, added on top:
+
+- **`RequiresMountsFor`** on `forgejo-dump.service`. The sticks are mounted `nofail`, so without
+  it a dump with a disk absent writes into the bare mountpoint on the root filesystem and exits
+  0. It looks like a successful backup and is not one.
+- **`Persistent = true`** on the timer, so a dump missed while the VM was off is caught up.
+
+The `cp` to the second stick became `forgejo-dump-mirror.service`, `wantedBy` the dump unit, and
+runs `rsync -rt --delete --no-perms --no-owner --no-group`. No `-a`: the sticks are exfat and
+vfat and cannot store unix ownership. `--delete` makes the mirror inherit the pruning for free.
+
+**How to prove a refactor changed nothing.** Evaluation is platform-independent, so from the Mac:
+
+```bash
+nix eval --raw '.#nixosConfigurations.dns.config.system.build.toplevel.drvPath'
+nix eval --raw 'git+file:///path/to/homelab?dir=nix&ref=refs/heads/main#nixosConfigurations.dns.config.system.build.toplevel.drvPath'
+```
+
+Identical hashes mean the two configurations are the same derivation — nothing was built to find
+out. The Pi-hole move into a module came out bit-identical this way; the Forgejo one differed in
+exactly the three expected systemd units. Note the `ref=` — without it the flake URL reads your
+dirty working tree and you compare a tree against itself.
+
+**Flakes only see tracked files.** A new `.nix` file that has not been `git add`ed does not exist
+as far as `nix eval` is concerned, and the error names a missing path rather than an untracked
+one.
 
 ---
 
@@ -170,3 +249,103 @@ moved {
 Once applied, state holds the new address and the block does nothing forever. It has been removed.
 Keep such a block only until every state that could contain the old address has been migrated —
 here that's one local, gitignored state file, so one apply was enough.
+
+### 4. Pi-hole does not need Docker
+
+The build guide ran it as a container because `services.pihole` does not exist in nixpkgs
+**25.05**. It does exist in **25.11+** as `services.pihole-ftl` + `services.pihole-web`. The
+container version caused four separate failures — port 53 contention, an image that could not be
+pulled without DNS, queries silently dropped by dnsmasq's `LOCAL` mode behind Docker's bridge
+NAT, and no declarative password. Bumping the flake to `nixos-26.05` and using the native module
+removed all four. **When something has no NixOS module, check whether your pin is simply old
+before reaching for a container.**
+
+### 5. Never disable `systemd-resolved` to free port 53
+
+Use:
+
+```nix
+services.resolved.settings.Resolve.DNSStubListener = false;
+```
+
+`services.resolved.enable = false` leaves the machine with *no resolver at all*, which means it
+cannot fetch the closure that would fix it. That is an unrecoverable deadlock without an
+out-of-band edit to `/etc/resolv.conf`. Also set `networking.nameservers` to the router: a DNS
+server that resolves through itself cannot bootstrap.
+
+### 6. The Terraform provider needs an SSH username
+
+Token auth carries no SSH identity, so `ssh { agent = true; }` alone connects as `""` and fails
+at disk creation:
+
+```hcl
+ssh { agent = true; username = "root"; }
+```
+
+### 7. A qcow2 goes in the `import` datastore, not `iso`
+
+PVE's `$ISO_EXT_RE` accepts only `.iso` and `.img`; a `.qcow2` under `local:iso/` fails with
+*"unable to parse directory volume name"* and is invisible to `pvesm list`. Use
+`local:import/nixos-base.qcow2`.
+
+### 8. `nixos-rebuild` from macOS needs `--no-reexec` and `--build-host`
+
+Without `--no-reexec` it tries to build an `x86_64-linux` copy of itself locally and dies on
+platform mismatch. It also needs `--build-host`, since macOS cannot build Linux derivations.
+Evaluation is platform-independent and works fine locally — which is what makes the `drvPath`
+comparison above usable from a laptop.
+
+### 9. `nixos-generate -c` needs an explicit nixpkgs pin
+
+It resolves `<nixpkgs>` through `NIX_PATH`, the pre-flakes mechanism. On a flakes-only install
+that is empty. Pin it to the rev from `flake.lock` so the image matches the flake.
+
+### 10. Provider aliases cannot be dynamic
+
+Terraform resolves providers before evaluating `for_each`, so
+`provider = proxmox[each.value.host]` is impossible. That single constraint is why `main.tf` has
+one `module` block per host, and why the VM map is nested by host rather than flat and filtered —
+the nesting mirrors a limitation you cannot design around.
+
+### 11. `for_each` over a map, never `count`
+
+With `count`, resources are addressed by index, so deleting one VM renumbers the rest and
+destroys machines you did not touch. `for_each` gives you `module.hp16["dns"]`, stable forever.
+
+### 12. The image and the flake are two separate evaluations
+
+`nixos-generators` supplies `fileSystems` and a bootloader while building the image; your flake
+does not import that module, so `base.nix` must declare them itself or `nixos-rebuild` fails with
+*"The `fileSystems` option does not specify your root file system."* Match the bootloader to the
+firmware — the Terraform module sets `bios = "ovmf"`, so it is systemd-boot and an ESP at
+`/boot`, not BIOS GRUB.
+
+### 13. `system.stateVersion` is not a version to bump
+
+It records which release's *stateful* defaults this machine expects, so upgrading nixpkgs cannot
+silently migrate data underneath you. It stayed `"25.05"` through the jump to 26.05, correctly.
+
+### 14. Generated config beats copied config
+
+`nix/data/network.nix` holds one attrset of host→IP records, and Pi-hole's host list is derived
+from it:
+
+```nix
+hosts = lib.mapAttrsToList (name: ip: "${ip} ${name}") cfg.records;
+```
+
+Addresses stop being a hand-copied list that drifts from `network-inventory.md`. The table
+started life inline in `dns.nix`; moving it to `data/` is what made it usable by anything other
+than Pi-hole.
+
+### 15. Secrets have a declarative path, usually
+
+The Pi-hole admin password is a BALLOON-SHA256 hash in
+`homelab.services.pihole.web.passwordHash`, generated without ever writing to disk:
+
+```bash
+FTLCONF_webserver_api_password="$PW" pihole-FTL --config webserver.api.pwhash
+```
+
+The module sets `misc.readOnly = true` so runtime changes cannot silently diverge from config —
+which is why the password could not be set with `pihole setpassword`.

@@ -18,7 +18,7 @@ can never collide with a real TLD the way `.local`/`.lan` can).
 |---|---|
 | `.1` | Gateway / router |
 | `.60`, `.62`, `.63` | Held for Kubernetes, whenever it happens |
-| `.61`, `.64–.69` | Static infrastructure guests (NixOS, plus TrueNAS) |
+| `.61`, `.64–.69` | Static infrastructure guests, all NixOS |
 | `.70–.79` | MetalLB pool — deferred along with the rest of Kubernetes |
 | `.90–.93` | Kubernetes-the-hard-way lab — deferred |
 | `.125`, `.129`, `.254` | Proxmox hosts themselves |
@@ -37,7 +37,7 @@ provider alias per host.
 
 | DNS name | IP | Node name | Hardware | Runs | Terraform root module |
 |---|---|---|---|---|---|
-| `dell.home.arpa` | `192.168.0.254` | `dell` | Dell 5820, Xeon W-2245, 96GB, RTX 4000 | `truenas`, `ollama` | `terraform/infra/` |
+| `dell.home.arpa` | `192.168.0.254` | `dell` | Dell 5820, Xeon W-2245, 96GB, RTX 4000 | `ollama`, `media` | `terraform/infra/` |
 | `hp32.home.arpa` | `192.168.0.129` | `hp32` | HP SFF, i7, 32GB | *(empty — Talos cluster destroyed)* | `terraform/infra/` |
 | `hp16.home.arpa` | `192.168.0.125` | `hp16` | HP SFF, i7, 16GB | `dns`, `git` | `terraform/infra/` |
 
@@ -49,10 +49,9 @@ Status legend: **live** = running now · **planned** = not built yet · **blocke
 
 | DNS name | IP | ID | Host | Runs | Ports | Source | Status |
 |---|---|---|---|---|---|---|---|
-| `git.home.arpa` | `.61` | 641 | hp16 | Forgejo + nginx | 80, 22 | `terraform/infra/` | VM **live**, service not applied |
-| `dns.home.arpa` | `.64` | 640 | hp16 | Pi-hole (Docker, on NixOS) | 53, 80 | `terraform/infra/` | VM **live**, Pi-hole failing to start |
-| `truenas.home.arpa` | `.65` | 700 | dell | TrueNAS SCALE 25.10.5 + HBA passthrough | 80, 443, 2049 | `hosts/dell/vms.tf` | **live** (pool blocked on 3rd drive) |
-| `jellyfin.home.arpa` | `.66` | — | dell | Jellyfin | 8096 | *(not written)* | blocked on TrueNAS pool |
+| `git.home.arpa` | `.61` | 641 | hp16 | Forgejo + nginx | 80, 22 | `terraform/infra/` | **live** |
+| `dns.home.arpa` | `.64` | 640 | hp16 | Pi-hole (`services.pihole-ftl`) | 53, 80 | `terraform/infra/` | **live** |
+| `media.home.arpa` | `.66` | — | dell | Nixarr: jellyfin, sonarr, radarr, prowlarr, bazarr, seerr, qbittorrent + ZFS RAIDZ1 over the HBA | 8096, 8989, 7878, 9696, 6767, 5055, 5252 | `nix/hosts/media.nix` | planned |
 | `ollama.home.arpa` | `.67` | 702 | dell | Ollama + open-webui | 11434 (API), 3000 (UI) | `hosts/dell/vms.tf` | VM **live**, service not installed |
 | `monitoring.home.arpa` | `.68` | — | hp32 | Grafana + Prometheus | 80 | *(not written)* | planned |
 | `backup.home.arpa` | `.69` | — | hp32 | restic target + NFS | 2049 | *(not written)* | planned |
@@ -116,15 +115,16 @@ DNS Records**, or write them straight into `/etc/pihole/custom.list` on the cont
 192.168.0.125   hp16.home.arpa
 192.168.0.61    git.home.arpa
 192.168.0.64    dns.home.arpa
-192.168.0.65    truenas.home.arpa
 192.168.0.66    jellyfin.home.arpa
+192.168.0.66    media.home.arpa
 192.168.0.67    ollama.home.arpa
 192.168.0.68    grafana.home.arpa
 ```
 
-These are no longer maintained by hand. They live in the `records` attrset at the top of
-`nix/hosts/dns.nix` and are generated into Pi-hole's `FTLCONF_dns_hosts` at build time, so this
-block is a copy for reading, not the source. Edit the Nix file.
+These are no longer maintained by hand. They live in `nix/data/network.nix`, which
+`homelab.services.pihole.records` defaults to, and are generated into Pi-hole's
+`FTLCONF_dns_hosts` at build time. This block is a copy for reading, not the source. Edit the
+Nix file.
 
 Two things make these actually reachable from your laptop:
 
@@ -143,7 +143,7 @@ new VM that forgets to pass it still filters.
 
 | Host | Total | Allocated | Breakdown |
 |---|---|---|---|
-| dell | 96GB | 80GB (90GB once Jellyfin lands) | ollama 64 + truenas 16 (+ jellyfin 10) |
+| dell | 96GB | 64GB (74GB once media lands) | ollama 64 (+ media 10) |
 | hp32 | 32GB | 0GB (12GB once monitoring and backup land) | nothing yet (+ monitoring 8 + backup 4) |
 | hp16 | 16GB | 6GB | dns 2 + git 4 |
 
