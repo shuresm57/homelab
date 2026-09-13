@@ -1,9 +1,6 @@
-{
-  config,
-  lib,
-  pkgs,
-  ...
-}: let
+{ config, lib, pkgs, ... }: 
+
+let
   cfg = config.homelab.services.forgejo;
 in {
   # ==========================================================================
@@ -82,6 +79,7 @@ in {
   };
 
   config = lib.mkIf cfg.enable {
+
     # ========================================================================
     # THE FORGE
     # ========================================================================
@@ -97,10 +95,12 @@ in {
           HTTP_ADDR = "127.0.0.1";
           HTTP_PORT = cfg.httpPort;
           SSH_PORT = cfg.sshPort;
+          START_SSH_SERVER = true;
+          SSH_LISTEN_PORT = cfg.sshPort;
         };
         service = {
           DISABLE_REGISTRATION = true;
-          REQUIRE_SIGNIN_VIEW = true;
+          # REQUIRE_SIGNIN_VIEW = true; Disabled for now
         };
       };
 
@@ -114,13 +114,8 @@ in {
     };
 
     # ========================================================================
-    # CUSTOM HOMEPAGE + PRESEEDED USERS
+    # PRESEEDED USERS
     # ========================================================================
-
-    systemd.tmpfiles.rules = [
-      "d '${config.services.forgejo.customDir}/templates' - forgejo forgejo - -"
-      "C+ '${config.services.forgejo.customDir}/templates/home.tmpl' - forgejo forgejo - ${../data/forgejo-custom/home.tmpl}"
-    ];
 
     systemd.services.forgejo.serviceConfig.EnvironmentFile = "/etc/forgejo/users.env";
 
