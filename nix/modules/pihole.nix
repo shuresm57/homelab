@@ -1,12 +1,14 @@
-{ config, lib, pkgs, ... }:
-let
-  cfg = config.homelab.services.pihole;
-in
 {
-
-# ==========================================================================
-# OPTIONS
-# ==========================================================================
+  config,
+  lib,
+  pkgs,
+  ...
+}: let
+  cfg = config.homelab.services.pihole;
+in {
+  # ==========================================================================
+  # OPTIONS
+  # ==========================================================================
 
   options.homelab.services.pihole = {
     enable = lib.mkEnableOption "the homelab Pi-hole resolver";
@@ -25,7 +27,7 @@ in
 
     upstreams = lib.mkOption {
       type = lib.types.listOf lib.types.str;
-      default = [ "1.1.1.1" "9.9.9.9" ];
+      default = ["1.1.1.1" "9.9.9.9"];
       description = "Upstream resolvers queries are forwarded to.";
     };
 
@@ -33,7 +35,7 @@ in
       type = lib.types.attrsOf lib.types.str;
       default = import ../data/network.nix;
       defaultText = lib.literalExpression "import ../data/network.nix";
-      example = { "git.home.arpa" = "192.168.0.61"; };
+      example = {"git.home.arpa" = "192.168.0.61";};
       description = "Local A records, as hostname -> IP.";
     };
 
@@ -45,7 +47,7 @@ in
             description = "URL of the domain list.";
           };
           type = lib.mkOption {
-            type = lib.types.enum [ "allow" "block" ];
+            type = lib.types.enum ["allow" "block"];
             default = "block";
             description = "Whether domains on this list are explicitly allowed, or blocked.";
           };
@@ -61,16 +63,18 @@ in
           };
         };
       });
-      default = [{
-        url = "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts";
-        description = "Steven Black's HOSTS";
-      }];
+      default = [
+        {
+          url = "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts";
+          description = "Steven Black's HOSTS";
+        }
+      ];
       description = "Domain lists FTL subscribes to.";
     };
 
-# ========================================================================
-# DASHBOARD
-# ========================================================================
+    # ========================================================================
+    # DASHBOARD
+    # ========================================================================
 
     web = {
       enable = lib.mkOption {
@@ -88,7 +92,7 @@ in
 
       ports = lib.mkOption {
         type = lib.types.listOf lib.types.port;
-        default = [ 80 ];
+        default = [80];
         description = "Ports the dashboard listens on.";
       };
 
@@ -103,21 +107,20 @@ in
   };
 
   config = lib.mkIf cfg.enable {
-
-# ========================================================================
-# ADMIN TOOLING, AND THE FTL SETUP QUIRK
-# ========================================================================
+    # ========================================================================
+    # ADMIN TOOLING, AND THE FTL SETUP QUIRK
+    # ========================================================================
 
     environment.systemPackages = [
       config.services.pihole-ftl.package
       pkgs.pihole
     ];
 
-    systemd.services.pihole-ftl-setup.serviceConfig.SuccessExitStatus = [ 1 ];
+    systemd.services.pihole-ftl-setup.serviceConfig.SuccessExitStatus = [1];
 
-# ========================================================================
-# RESOLVER: UPSTREAMS, LOCAL RECORDS, BLOCKING
-# ========================================================================
+    # ========================================================================
+    # RESOLVER: UPSTREAMS, LOCAL RECORDS, BLOCKING
+    # ========================================================================
 
     services.pihole-ftl = {
       enable = true;
@@ -154,9 +157,9 @@ in
       };
     };
 
-# ========================================================================
-# DASHBOARD
-# ========================================================================
+    # ========================================================================
+    # DASHBOARD
+    # ========================================================================
 
     services.pihole-web = lib.mkIf cfg.web.enable {
       enable = true;

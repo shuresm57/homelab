@@ -1,12 +1,14 @@
-{ config, lib, pkgs, ... }:
-let
-  cfg = config.homelab.services.forgejo;
-in
 {
-
-# ==========================================================================
-# OPTIONS
-# ==========================================================================
+  config,
+  lib,
+  pkgs,
+  ...
+}: let
+  cfg = config.homelab.services.forgejo;
+in {
+  # ==========================================================================
+  # OPTIONS
+  # ==========================================================================
 
   options.homelab.services.forgejo = {
     enable = lib.mkEnableOption "the homelab Forgejo instance";
@@ -19,8 +21,8 @@ in
 
     aliases = lib.mkOption {
       type = lib.types.listOf lib.types.str;
-      default = [ ];
-      example = [ "git.vstov.dk" ];
+      default = [];
+      example = ["git.vstov.dk"];
       description = "Extra names the nginx vhost also answers to.";
     };
 
@@ -42,9 +44,9 @@ in
       description = "Put Forgejo behind nginx on port 80 instead of exposing it directly.";
     };
 
-# ========================================================================
-# DUMP TO REMOVABLE MEDIA
-# ========================================================================
+    # ========================================================================
+    # DUMP TO REMOVABLE MEDIA
+    # ========================================================================
 
     backup = {
       enable = lib.mkEnableOption "periodic dumps via the built-in forgejo dump command";
@@ -60,8 +62,8 @@ in
 
       mirrors = lib.mkOption {
         type = lib.types.listOf lib.types.str;
-        default = [ ];
-        example = [ "/mnt/backup2/forgejo" ];
+        default = [];
+        example = ["/mnt/backup2/forgejo"];
         description = "Directories {option}`backup.dir` is mirrored to after every dump.";
       };
 
@@ -80,10 +82,9 @@ in
   };
 
   config = lib.mkIf cfg.enable {
-
-# ========================================================================
-# THE FORGE
-# ========================================================================
+    # ========================================================================
+    # THE FORGE
+    # ========================================================================
 
     services.forgejo = {
       enable = true;
@@ -91,62 +92,63 @@ in
 
       settings = {
         server = {
-          DOMAIN    = cfg.domain;
-          ROOT_URL  = "http://${cfg.domain}/";
+          DOMAIN = cfg.domain;
+          ROOT_URL = "http://${cfg.domain}/";
           HTTP_ADDR = "127.0.0.1";
           HTTP_PORT = cfg.httpPort;
-          SSH_PORT  = cfg.sshPort;
+          SSH_PORT = cfg.sshPort;
         };
         service.DISABLE_REGISTRATION = true;
       };
 
       dump = lib.mkIf cfg.backup.enable {
-        enable    = true;
+        enable = true;
         backupDir = cfg.backup.dir;
-        interval  = cfg.backup.interval;
-        type      = "zip";
-        age       = cfg.backup.age;
+        interval = cfg.backup.interval;
+        type = "zip";
+        age = cfg.backup.age;
       };
     };
 
-# ========================================================================
-# DUMP, TIMER, AND OFF-SITE MIRROR
-# ========================================================================
+    # ========================================================================
+    # DUMP, TIMER, AND OFF-SITE MIRROR
+    # ========================================================================
 
     systemd.services.forgejo-dump = lib.mkIf cfg.backup.enable {
-      unitConfig.RequiresMountsFor = [ cfg.backup.dir ] ++ cfg.backup.mirrors;
+      unitConfig.RequiresMountsFor = [cfg.backup.dir] ++ cfg.backup.mirrors;
     };
 
     systemd.timers.forgejo-dump = lib.mkIf cfg.backup.enable {
       timerConfig.Persistent = true;
     };
 
-    systemd.services.forgejo-dump-mirror =
-      lib.mkIf (cfg.backup.enable && cfg.backup.mirrors != [ ]) {
-        description = "Mirror Forgejo dumps to secondary media";
-        after    = [ "forgejo-dump.service" ];
-        wantedBy = [ "forgejo-dump.service" ];
-        unitConfig.RequiresMountsFor = [ cfg.backup.dir ] ++ cfg.backup.mirrors;
+    systemd.services.forgejo-dump-mirror = lib.mkIf (cfg.backup.enable && cfg.backup.mirrors != []) {
+      description = "Mirror Forgejo dumps to secondary media";
+      after = ["forgejo-dump.service"];
+      wantedBy = ["forgejo-dump.service"];
+      unitConfig.RequiresMountsFor = [cfg.backup.dir] ++ cfg.backup.mirrors;
 
-        serviceConfig = {
-          Type = "oneshot";
-          User = config.services.forgejo.user;
-          ExecStart = map (
+      serviceConfig = {
+        Type = "oneshot";
+        User = config.services.forgejo.user;
+        ExecStart =
+          map (
             mirror:
-            "${lib.getExe pkgs.rsync} -rt --delete --no-perms --no-owner --no-group "
-            + "${cfg.backup.dir}/ ${mirror}/"
-          ) cfg.backup.mirrors;
-        };
+              "${lib.getExe pkgs.rsync} -rt --delete --no-perms --no-owner --no-group "
+              + "${cfg.backup.dir}/ ${mirror}/"
+          )
+          cfg.backup.mirrors;
       };
+    };
 
-# ========================================================================
-# REVERSE PROXY AND FIREWALL
-# ========================================================================
+    # ========================================================================
+    # REVERSE PROXY AND FIREWALL
+    # ========================================================================
 
     services.nginx = lib.mkIf cfg.reverseProxy.enable {
       enable = true;
       recommendedProxySettings = true;
-      recommendedGzipSettings  = true;
+      recommendedGzipSettings = true;
       virtualHosts.${cfg.domain} = {
         serverAliases = cfg.aliases;
         locations."/" = {
@@ -156,6 +158,6 @@ in
     };
 
     networking.firewall.allowedTCPPorts =
-      lib.optional cfg.reverseProxy.enable 80 ++ [ cfg.sshPort ];
+      lib.optional cfg.reverseProxy.enable 80 ++ [cfg.sshPort];
   };
 }

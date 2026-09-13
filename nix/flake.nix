@@ -7,10 +7,14 @@
     nixarr.inputs.nixpkgs.follows = "nixpkgs";
   };
 
-  outputs = { self, nixpkgs, ... }:
-    let
-      system = "x86_64-linux";
-      mkHost = name: nixpkgs.lib.nixosSystem {
+  outputs = {
+    self,
+    nixpkgs,
+    ...
+  }: let
+    system = "x86_64-linux";
+    mkHost = name:
+      nixpkgs.lib.nixosSystem {
         inherit system;
         specialArgs = { inherit inputs };
         modules = [
@@ -18,10 +22,10 @@
           ./hosts/${name}.nix
         ];
       };
-    in {
-      nixosConfigurations = {
-        dns = mkHost "dns";
-        git = mkHost "git";
-      };
+  in {
+    nixosConfigurations = {
+      dns = mkHost "dns";
+      git = mkHost "git";
     };
+  };
 }
