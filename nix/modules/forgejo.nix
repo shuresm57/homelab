@@ -31,7 +31,7 @@ in {
 
     sshPort = lib.mkOption {
       type = lib.types.port;
-      default = 22;
+      default = 2222;
       description = "SSH port shown in clone URLs, and opened in the firewall.";
     };
 

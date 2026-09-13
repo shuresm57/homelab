@@ -17,7 +17,7 @@
     enable  = true;
     domain  = "git.home.arpa";
     aliases = [ "git.vstov.dk" ];
-    shhPort = 2222;
+    sshPort = 2222;
 
     backup = {
       enable  = true;
