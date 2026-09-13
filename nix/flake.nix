@@ -7,7 +7,7 @@
     nixarr.inputs.nixpkgs.follows = "nixpkgs";
   };
 
-  outputs = {
+  outputs = inputs @ {
     self,
     nixpkgs,
     ...
@@ -16,7 +16,7 @@
     mkHost = name:
       nixpkgs.lib.nixosSystem {
         inherit system;
-        specialArgs = { inherit inputs };
+        specialArgs = { inherit inputs; };
         modules = [
           ./modules
           ./hosts/${name}.nix

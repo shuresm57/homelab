@@ -93,12 +93,15 @@ in {
       settings = {
         server = {
           DOMAIN = cfg.domain;
-          ROOT_URL = "http://${cfg.domain}/";
+          ROOT_URL = "https://git.vstov.dk/";
           HTTP_ADDR = "127.0.0.1";
           HTTP_PORT = cfg.httpPort;
           SSH_PORT = cfg.sshPort;
         };
-        service.DISABLE_REGISTRATION = true;
+        service = {
+          DISABLE_REGISTRATION = true;
+          REQUIRE_SIGNIN_VIEW = true;
+        };
       };
 
       dump = lib.mkIf cfg.backup.enable {
@@ -109,6 +112,24 @@ in {
         age = cfg.backup.age;
       };
     };
+
+    # ========================================================================
+    # CUSTOM HOMEPAGE + PRESEEDED USERS
+    # ========================================================================
+
+    systemd.tmpfiles.rules = [
+      "d '${config.services.forgejo.customDir}/templates' - forgejo forgejo - -"
+      "C+ '${config.services.forgejo.customDir}/templates/home.tmpl' - forgejo forgejo - ${../data/forgejo-custom/home.tmpl}"
+    ];
+
+    systemd.services.forgejo.serviceConfig.EnvironmentFile = "/etc/forgejo/users.env";
+
+    systemd.services.forgejo.preStart = lib.mkAfter ''
+      ${lib.getExe config.services.forgejo.package} admin user create --admin \
+        --email "$USER1_NAME@localhost" --username "$USER1_NAME" --password "$USER1_PASS" || true
+      ${lib.getExe config.services.forgejo.package} admin user create --admin \
+        --email "$USER2_NAME@localhost" --username "$USER2_NAME" --password "$USER2_PASS" || true
+    '';
 
     # ========================================================================
     # DUMP, TIMER, AND OFF-SITE MIRROR
@@ -149,15 +170,24 @@ in {
       enable = true;
       recommendedProxySettings = true;
       recommendedGzipSettings = true;
-      virtualHosts.${cfg.domain} = {
-        serverAliases = cfg.aliases;
+
+      virtualHosts = {
+        ${cfg.domain}.locations."/".proxyPass = "http://127.0.0.1:${toString cfg.httpPort}";
+      } // lib.genAttrs cfg.aliases (alias: {
+        forceSSL = true;
+        enableACME = true;
         locations."/" = {
           proxyPass = "http://127.0.0.1:${toString cfg.httpPort}";
+          extraConfig = ''
+            if ($allowed_country = no) { return 403; }
+          '';
         };
-      };
+      });
     };
 
     networking.firewall.allowedTCPPorts =
-      lib.optional cfg.reverseProxy.enable 80 ++ [cfg.sshPort];
+      lib.optional cfg.reverseProxy.enable 80
+      ++ lib.optional (cfg.aliases != []) 443
+      ++ [cfg.sshPort];
   };
 }

@@ -1,0 +1,5 @@
+.navbar .item[href$="/explore/repos"],
+.navbar .item[href$="/explore/users"],
+.navbar .item[href$="/explore/organizations"] {
+  display: none !important;
+}

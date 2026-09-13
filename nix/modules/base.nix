@@ -51,6 +51,11 @@
     "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPTNPKoS0uzB2lVA+I1BsZvB1ugFNw5hm2P/8LnjfR5K vss@Valdemars-MacBook-Pro.local"
   ];
 
+  users.users.nixos = {
+  isNormalUser = true;
+  extraGroups = [ "wheel" ];
+  };
+
   time.timeZone = "Europe/Copenhagen";
 
   nix.settings.experimental-features = ["nix-command" "flakes"];
