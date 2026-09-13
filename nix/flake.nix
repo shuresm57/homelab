@@ -2,9 +2,9 @@
   description = "homelab";
 
   inputs = {
-    # 26.05 or newer is required: services.pihole-ftl / services.pihole-web
-    # landed in 25.11 and do not exist in 25.05.
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
+    nixarr.url = "github:nix-media-server/nixarr";
+    nixarr.inputs.nixpkgs.follows = "nixpkgs";
   };
 
   outputs = { self, nixpkgs, ... }:
@@ -12,6 +12,7 @@
       system = "x86_64-linux";
       mkHost = name: nixpkgs.lib.nixosSystem {
         inherit system;
+        specialArgs = { inherit inputs };
         modules = [
           ./modules
           ./hosts/${name}.nix

@@ -15,9 +15,6 @@ locals {
         disk_size_gb = 40
         ip           = "192.168.0.61/24"
 
-        # The two sticks the Forgejo dumps land on; see nix/hosts/git.nix, which
-        # mounts them by UUID. Order matters: index 0 is usb0. Identified by
-        # port path, so they have to stay in these physical ports on hp16.
         usb_devices = [
           { host = "2-3", usb3 = true }, # LaCie Rugged Mini -> /mnt/backup1
           { host = "2-7", usb3 = true }, # Samsung Flash FIT -> /mnt/backup2

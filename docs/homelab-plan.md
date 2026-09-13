@@ -186,69 +186,182 @@ One VM at `.66` runs the whole media stack and owns the storage. [Nixarr](https:
 supplies the services; ZFS on the passed-through HBA supplies the disk. There is no NAS in the
 middle any more.
 
-Nixarr is a third-party flake, so it arrives as an input rather than from nixpkgs:
+Nixarr is not in nixpkgs, so it arrives as a flake input, and `mkHost` grows a `specialArgs` so
+that a module can reach that input:
 
 ```nix
 # nix/flake.nix
-inputs = {
-  nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
-  nixarr.url  = "github:nix-media-server/nixarr";
-  nixarr.inputs.nixpkgs.follows = "nixpkgs";
-};
-
-# mkHost gains specialArgs, so a module can reach the flake's inputs
-mkHost = name: nixpkgs.lib.nixosSystem {
-  inherit system;
-  specialArgs = { inherit inputs; };
-  modules = [ ./modules ./hosts/${name}.nix ];
-};
-```
-
-Two new modules, in the same shape as `forgejo.nix` and `pihole.nix`. Storage is its own module
-because the planned `backup` host (§3.1) will want it too:
-
-```nix
-# nix/modules/zfs.nix -- homelab.storage.zfs.{enable,hostId,pools,autoScrub,scrubInterval}
-#   sets boot.supportedFilesystems = [ "zfs" ], networking.hostId, services.zfs.autoScrub
-
-# nix/modules/media.nix
-{ config, lib, pkgs, inputs, ... }:
 {
-  imports = [ inputs.nixarr.nixosModules.default ];
-  # options.homelab.services.media = { ... };  then, under mkIf cfg.enable:
+  description = "homelab";
+
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
+    nixarr.url  = "github:nix-media-server/nixarr";
+    nixarr.inputs.nixpkgs.follows = "nixpkgs";
+  };
+
+  outputs = { self, nixpkgs, ... }@inputs:
+    let
+      system = "x86_64-linux";
+      mkHost = name: nixpkgs.lib.nixosSystem {
+        inherit system;
+        specialArgs = { inherit inputs; };
+        modules = [
+          ./modules
+          ./hosts/${name}.nix
+        ];
+      };
+    in {
+      nixosConfigurations = {
+        dns   = mkHost "dns";
+        git   = mkHost "git";
+        media = mkHost "media";
+      };
+    };
 }
 ```
 
-What `homelab.services.media` should produce:
+Then two new modules, in the same shape as `forgejo.nix` and `pihole.nix`. Storage is its own
+module because the planned `backup` host (§3.1) will want it too:
 
 ```nix
-nixarr = {
-  enable   = true;
-  mediaDir = "/data/media";
-  stateDir = "/data/.state/nixarr";
+# nix/modules/zfs.nix
+{ config, lib, pkgs, ... }:
+let
+  cfg = config.homelab.storage.zfs;
+in
+{
+  options.homelab.storage.zfs = {
+    enable = lib.mkEnableOption "ZFS";
 
-  vpn = {
-    enable = true;
-    # ProtonVPN wg-quick file. Never in this repo.
-    wgConf = "/data/.secret/vpn/wg.conf";
+    hostId = lib.mkOption {
+      type = lib.types.str;
+      description = "8 hex characters, unique to this machine. ZFS refuses to work without it.";
+    };
+
+    pools = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ "tank" ];
+      description = "Pools this host owns. Datasets are mounted via fileSystems, not from here.";
+    };
+
+    autoScrub = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+    };
+
+    scrubInterval = lib.mkOption {
+      type = lib.types.str;
+      default = "monthly";
+    };
   };
 
-  jellyfin.enable = true;   # 8096, read-only option
-  sonarr.enable   = true;   # 8989
-  radarr.enable   = true;   # 7878
-  prowlarr.enable = true;   # 9696
-  bazarr.enable   = true;   # 6767
-  seerr.enable    = true;   # 5055  -- Jellyseerr, but the option is `seerr`
+  config = lib.mkIf cfg.enable {
+    boot.supportedFilesystems = [ "zfs" ];
+    networking.hostId = cfg.hostId;
+    environment.systemPackages = [ pkgs.zfs ];
 
-  qbittorrent = {
-    enable     = true;
-    vpn.enable = true;
-    peerPort   = 6881;      # webuiPort defaults to 5252
+    services.zfs.autoScrub = {
+      enable = cfg.autoScrub;
+      interval = cfg.scrubInterval;
+    };
   };
-};
+}
 ```
 
-And the host file stays thin, as the others do:
+And the wrapper, which is the only place `nixarr.*` is set:
+
+```nix
+# nix/modules/media.nix
+{ config, lib, inputs, ... }:
+let
+  cfg = config.homelab.services.media;
+in
+{
+  imports = [ inputs.nixarr.nixosModules.default ];
+
+  # ==========================================================================
+  # OPTIONS
+  # ==========================================================================
+  options.homelab.services.media = {
+    enable = lib.mkEnableOption "the Nixarr media stack";
+
+    mediaDir = lib.mkOption {
+      type = lib.types.path;
+      default = "/data/media";
+    };
+
+    stateDir = lib.mkOption {
+      type = lib.types.path;
+      default = "/data/.state/nixarr";
+    };
+
+    jellyfin    = lib.mkOption { type = lib.types.bool; default = true; };
+    sonarr      = lib.mkOption { type = lib.types.bool; default = true; };
+    radarr      = lib.mkOption { type = lib.types.bool; default = true; };
+    prowlarr    = lib.mkOption { type = lib.types.bool; default = true; };
+    bazarr      = lib.mkOption { type = lib.types.bool; default = true; };
+    seerr       = lib.mkOption { type = lib.types.bool; default = true; };
+    qbittorrent = lib.mkOption { type = lib.types.bool; default = true; };
+    lidarr      = lib.mkOption { type = lib.types.bool; default = false; };
+    readarr     = lib.mkOption { type = lib.types.bool; default = false; };
+
+    vpn = {
+      enable = lib.mkEnableOption "confining the download client to WireGuard";
+
+      wgConf = lib.mkOption {
+        type = lib.types.nullOr lib.types.path;
+        default = null;
+        example = "/data/.secret/vpn/wg.conf";
+        description = "wg-quick file from the VPN provider. Never inside this repository.";
+      };
+    };
+  };
+
+  # ==========================================================================
+  # THE STACK
+  # ==========================================================================
+  config = lib.mkIf cfg.enable {
+    nixarr = {
+      enable = true;
+      inherit (cfg) mediaDir stateDir;
+
+      vpn = { inherit (cfg.vpn) enable wgConf; };
+
+      jellyfin.enable = cfg.jellyfin;      # 8096, and nixarr.jellyfin.port is read-only
+      sonarr.enable   = cfg.sonarr;        # 8989
+      radarr.enable   = cfg.radarr;        # 7878
+      prowlarr.enable = cfg.prowlarr;      # 9696
+      bazarr.enable   = cfg.bazarr;        # 6767
+      seerr.enable    = cfg.seerr;         # 5055, Jellyseerr
+      lidarr.enable   = cfg.lidarr;
+      readarr.enable  = cfg.readarr;
+
+      qbittorrent = {
+        enable     = cfg.qbittorrent;      # WebUI on 5252
+        vpn.enable = cfg.vpn.enable;
+        peerPort   = 6881;
+      };
+    };
+
+    assertions = [
+      {
+        assertion = cfg.qbittorrent -> cfg.vpn.enable;
+        message = ''
+          homelab.services.media.qbittorrent requires vpn.enable.
+          A torrent client must not run on the bare WAN address.
+        '';
+      }
+      {
+        assertion = cfg.vpn.enable -> cfg.vpn.wgConf != null;
+        message = "homelab.services.media.vpn.enable requires vpn.wgConf.";
+      }
+    ];
+  };
+}
+```
+
+The host file stays as thin as the other two:
 
 ```nix
 # nix/hosts/media.nix
@@ -258,7 +371,7 @@ And the host file stays thin, as the others do:
 
   homelab.storage.zfs = {
     enable = true;
-    hostId = "<8 hex chars>";     # head -c4 /dev/urandom | od -A none -t x4
+    hostId = "8f3c1d20";           # head -c4 /dev/urandom | od -A none -t x4
     pools  = [ "tank" ];
   };
 
@@ -273,11 +386,14 @@ The pool itself is created once, by hand, on the VM — NixOS imports and mounts
 create them:
 
 ```bash
+# four disks, so name four; `ls -l /dev/disk/by-id/` to find them
 zpool create -o ashift=12 \
   -O compression=zstd -O atime=off -O xattr=sa -O acltype=posixacl \
   -m none tank raidz1 \
-  /dev/disk/by-id/wwn-... /dev/disk/by-id/wwn-... \
-  /dev/disk/by-id/wwn-... /dev/disk/by-id/wwn-...
+    /dev/disk/by-id/wwn-0x... \
+    /dev/disk/by-id/wwn-0x... \
+    /dev/disk/by-id/wwn-0x... \
+    /dev/disk/by-id/wwn-0x...
 
 zfs create -o mountpoint=legacy tank/media
 zfs create -o mountpoint=legacy tank/state
@@ -289,15 +405,16 @@ zfs create -o mountpoint=legacy tank/state
 >   `local-fs.target`, and `systemd-tmpfiles-setup` runs after that target, so Nixarr's directory
 >   creation cannot race the pool import. With `extraPools` there is no such ordering: the
 >   tmpfiles rules can fire first and scatter directories onto the root filesystem underneath an
->   unmounted mountpoint, where they are invisible the moment the pool mounts over them. This is
->   the same failure the Forgejo dump has `RequiresMountsFor` for.
+>   unmounted mountpoint, where they are invisible the moment the pool mounts over them. It is the
+>   same failure `RequiresMountsFor` guards against on the Forgejo dump, one layer down.
 > - **One dataset for media, not two.** Nixarr puts `library/` and `torrents/` *inside*
 >   `mediaDir`. ZFS datasets are separate filesystems, so a tidy-looking `tank/media` +
 >   `tank/downloads` split would silently turn every import from a hardlink into a full copy of
 >   the file.
 > - **`by-id` paths, never `/dev/sdX`.** HBA enumeration order is not stable across boots.
-> - **`xattr=sa` and `acltype=posixacl`** because Nixarr manages ownership and permissions across
->   the whole media tree. Note Nixarr's own constraint too: every parent directory of `mediaDir`
+> - **`xattr=sa` and `acltype=posixacl` are not optional here.** Nixarr manages ownership and
+>   permissions across the whole media tree, and needs both to do it. Nixarr adds a constraint of
+>   its own as well: every parent directory of `mediaDir`
 >   and `stateDir` must be root-owned, which is why they sit under `/data` and not under a home
 >   directory.
 > - **RAIDZ1 over four drives** gives three drives of usable capacity and survives one failure.
@@ -333,10 +450,19 @@ zfs create -o mountpoint=legacy tank/state
 >   module it builds against *our* `pkgs`, so the `follows` line only avoids a second nixpkgs in
 >   the lock file. If the combination refuses to evaluate, drop that line first — it is the
 >   cheapest thing to try.
-> - **`imports` cannot be conditional.** Putting `media.nix` in `modules/default.nix` means `dns`
->   and `git` evaluate Nixarr's option tree as well. Check it with the `drvPath` comparison from
->   `completed.md`; if either hash moves, list `media.nix` under the `media` host in `flake.nix`
->   instead of in the shared import list.
+> - **`mkIf cfg.enable` does not make a module's options optional, and this is why `media.nix`
+>   carries its own `imports` line.** Setting an option nobody declared is an error, and the
+>   module system raises it whether the surrounding `mkIf` is true or false — the check runs over
+>   attribute paths before conditions are discharged. So a module that *sets* `nixarr.*` has to be
+>   evaluated alongside the module that *declares* `nixarr.*`, unconditionally. And since
+>   `imports` cannot depend on `config`, there is no arrangement that pulls Nixarr in only on the
+>   host that enables it: every host importing `media.nix` gets Nixarr's option tree. That costs
+>   evaluation time and nothing else — no service, no package, no unit, because `nixarr.enable`
+>   stays false. If you would rather `dns` and `git` knew nothing about Nixarr, the two files move
+>   together: drop `./media.nix` from `modules/default.nix` and list it, alongside
+>   `inputs.nixarr.nixosModules.default`, under the `media` host in `flake.nix`. Either way, the
+>   `drvPath` comparison from `completed.md` is how you confirm the other two hosts did not
+>   actually change.
 
 ### ProtonVPN, and the port you do not get
 
@@ -346,14 +472,15 @@ some of them, and the rest simply drop it. The file contains a private key, so i
 `/data/.secret/vpn/wg.conf` on the host and never in this repository. It is the first real
 customer for the sops-nix migration in §2.6.
 
-The part worth knowing before you are confused by it: **Proton's port forwarding is NAT-PMP, and
-Nixarr cannot drive it.** The module's only port-forwarding controls are the static
+Now the part that will otherwise confuse you: **Proton's port forwarding is NAT-PMP, and Nixarr
+cannot drive it.** The module's only port-forwarding controls are the static
 `nixarr.vpn.openTcpPorts` / `openUdpPorts` and a router-side `util-nixarr.upnp` — there is no
 NAT-PMP anywhere in it. So qBittorrent runs outbound-only: downloading works, but it is slower to
 find peers and it cannot meaningfully seed, because nothing on the internet can open a connection
 to it. Getting a real forwarded port means running `natpmpc` on a renewal loop and feeding the
-port it returns back into qBittorrent on every renewal, which is a separate piece of machinery
-and not something this module does. Decide that you do not need it before assuming it works.
+port it returns back into qBittorrent on every renewal — a separate piece of machinery, and not
+one this module offers. Go in having decided you can live without it, rather than discovering
+weeks later that seeding never worked.
 
 `nixarr.vpn.vpnTestService.enable` exists precisely to check the tunnel and any forwarded port
 before trusting it with traffic. Use it once.

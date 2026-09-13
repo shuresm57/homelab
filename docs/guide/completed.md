@@ -153,15 +153,17 @@ knowing before you add a fourth host.
 **Every host imports every module.** `nix/modules/default.nix` is a bare `imports` list pulled in
 by `mkHost`, and each module declares its own `homelab.*` options with `mkEnableOption` and wraps
 its body in `config = lib.mkIf cfg.enable`. A host file is then hostname, hardware, and a few
-option values — `nix/hosts/git.nix` went from 69 lines to 36 this way. The one rule this imposes:
-a module that is imported everywhere **must** be gated, which is why `docker.nix` grew a
-`homelab.docker.enable` flag it did not have when nothing imported it.
+option values — `nix/hosts/git.nix` went from 69 lines to 36 this way. The rule this imposes:
+every module must be gated, because every module is imported everywhere. `docker.nix` had no flag
+back when nothing imported it; the moment it joined the shared list it would have turned Docker on
+for the DNS box, so it grew one.
 
 **`nix/data/network.nix` is the host→IP table.** `homelab.services.pihole.records` defaults to
-it, so Pi-hole's local DNS is generated from the same file a future host would read.
+it, so Pi-hole's local DNS is generated rather than transcribed. It started out inline in
+`dns.nix`; moving it to `data/` is what lets anything other than Pi-hole use it.
 
-**The Forgejo backup is upstream's now.** It used to be a hand-written
-`systemd.services.forgejo-backup` shelling out to `forgejo dump`. It is `services.forgejo.dump`,
+**The Forgejo backup now uses the upstream module.** It was a hand-written
+`systemd.services.forgejo-backup` shelling out to `forgejo dump`; it is `services.forgejo.dump`,
 which brought two things the hand-rolled version never had:
 
 - **Retention.** The module emits `d '<backupDir>' 0750 forgejo forgejo <age> -`, so
@@ -175,11 +177,12 @@ Two things upstream does *not* give you, added on top:
 - **`RequiresMountsFor`** on `forgejo-dump.service`. The sticks are mounted `nofail`, so without
   it a dump with a disk absent writes into the bare mountpoint on the root filesystem and exits
   0. It looks like a successful backup and is not one.
-- **`Persistent = true`** on the timer, so a dump missed while the VM was off is caught up.
+- **`Persistent = true`** on the timer, so a dump that was due while the VM was off runs at the
+  next boot instead of being skipped.
 
 The `cp` to the second stick became `forgejo-dump-mirror.service`, `wantedBy` the dump unit, and
-runs `rsync -rt --delete --no-perms --no-owner --no-group`. No `-a`: the sticks are exfat and
-vfat and cannot store unix ownership. `--delete` makes the mirror inherit the pruning for free.
+runs `rsync -rt --delete --no-perms --no-owner --no-group`. No `-a`, because exfat and vfat
+cannot store unix ownership. `--delete` makes the mirror inherit the pruning for free.
 
 **How to prove a refactor changed nothing.** Evaluation is platform-independent, so from the Mac:
 
@@ -194,8 +197,9 @@ exactly the three expected systemd units. Note the `ref=` — without it the fla
 dirty working tree and you compare a tree against itself.
 
 **Flakes only see tracked files.** A new `.nix` file that has not been `git add`ed does not exist
-as far as `nix eval` is concerned, and the error names a missing path rather than an untracked
-one.
+as far as `nix eval` is concerned. The error is at least explicit about it — *"Path
+'nix/modules/default.nix' in the repository ... is not tracked by Git"* — but it arrives at the
+bottom of a module-system stack trace, so it is easy to read past.
 
 ---
 
