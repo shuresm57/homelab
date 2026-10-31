@@ -26,6 +26,9 @@
     nixosConfigurations = {
       dns = mkHost "dns";
       git = mkHost "git";
+      home = mkHost "home";
+      ollama = mkHost "ollama";
+      media = mkHost "media";
     };
   };
 }

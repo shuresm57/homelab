@@ -41,6 +41,43 @@ in {
       description = "Put Forgejo behind nginx on port 80 instead of exposing it directly.";
     };
 
+    anubis.enable = lib.mkEnableOption ''
+      Anubis in front of the public aliases, so browsers solve a proof-of-work
+      challenge before reaching Forgejo. Git and API clients bypass it
+    '';
+
+    # ========================================================================
+    # SINGLE SIGN-ON
+    # ========================================================================
+
+    oidc = {
+      enable = lib.mkEnableOption "login through an OpenID Connect provider only";
+
+      name = lib.mkOption {
+        type = lib.types.str;
+        default = "keycloak";
+        description = "Name of the auth source; also the path segment in /user/oauth2/<name>.";
+      };
+
+      clientId = lib.mkOption {
+        type = lib.types.str;
+        default = "forgejo";
+        description = "Client ID registered in the provider. The secret is OIDC_SECRET in /etc/forgejo/oidc.env.";
+      };
+
+      discoveryUrl = lib.mkOption {
+        type = lib.types.str;
+        example = "https://auth.vstov.dk/realms/homelab/.well-known/openid-configuration";
+        description = "The provider's OpenID Connect discovery document.";
+      };
+
+      adminGroup = lib.mkOption {
+        type = lib.types.str;
+        default = "forgejo-admins";
+        description = "Members of this group in the `groups` claim become site admins.";
+      };
+    };
+
     # ========================================================================
     # DUMP TO REMOVABLE MEDIA
     # ========================================================================
@@ -99,8 +136,22 @@ in {
           SSH_LISTEN_PORT = cfg.sshPort;
         };
         service = {
-          DISABLE_REGISTRATION = true;
+          # With OIDC on, accounts are only created on first login through the provider.
+          DISABLE_REGISTRATION = !cfg.oidc.enable;
           # REQUIRE_SIGNIN_VIEW = true; Disabled for now
+        } // lib.optionalAttrs cfg.oidc.enable {
+          ALLOW_ONLY_EXTERNAL_REGISTRATION = true;
+          ENABLE_INTERNAL_SIGNIN = false;
+          # HTTPS git then needs an access token; SSH is unaffected.
+          ENABLE_BASIC_AUTHENTICATION = false;
+        };
+        oauth2_client = lib.mkIf cfg.oidc.enable {
+          ENABLE_AUTO_REGISTRATION = true;
+          # Links to the existing account with the same username/email.
+          ACCOUNT_LINKING = "auto";
+          USERNAME = "nickname";
+          OPENID_CONNECT_SCOPES = "openid email profile";
+          UPDATE_AVATAR = true;
         };
       };
 
@@ -114,17 +165,37 @@ in {
     };
 
     # ========================================================================
-    # PRESEEDED USERS
+    # OIDC AUTH SOURCE
     # ========================================================================
 
-    systemd.services.forgejo.serviceConfig.EnvironmentFile = "/etc/forgejo/users.env";
+    # Auth sources live in the database, not app.ini, so they are seeded here:
+    # add on first start, update in place on every later one.
+    systemd.services.forgejo = lib.mkIf cfg.oidc.enable {
+      after = ["keycloak.service"];
+      wants = ["keycloak.service"];
+      serviceConfig.EnvironmentFile = "/etc/forgejo/oidc.env";
 
-    systemd.services.forgejo.preStart = lib.mkAfter ''
-      ${lib.getExe config.services.forgejo.package} admin user create --admin \
-        --email "$USER1_NAME@localhost" --username "$USER1_NAME" --password "$USER1_PASS" || true
-      ${lib.getExe config.services.forgejo.package} admin user create --admin \
-        --email "$USER2_NAME@localhost" --username "$USER2_NAME" --password "$USER2_PASS" || true
-    '';
+      preStart = let
+        forgejo = lib.getExe config.services.forgejo.package;
+        flags = lib.escapeShellArgs [
+          "--name" cfg.oidc.name
+          "--provider" "openidConnect"
+          "--key" cfg.oidc.clientId
+          "--auto-discover-url" cfg.oidc.discoveryUrl
+          "--scopes" "openid email profile"
+          "--group-claim-name" "groups"
+          "--admin-group" cfg.oidc.adminGroup
+          "--skip-local-2fa"
+        ];
+      in lib.mkAfter ''
+        id=$(${forgejo} admin auth list | ${lib.getExe pkgs.gawk} -v n=${lib.escapeShellArg cfg.oidc.name} '$2 == n { print $1 }')
+        if [ -z "$id" ]; then
+          ${forgejo} admin auth add-oauth ${flags} --secret "$OIDC_SECRET"
+        else
+          ${forgejo} admin auth update-oauth --id "$id" ${flags} --secret "$OIDC_SECRET"
+        fi
+      '';
+    };
 
     # ========================================================================
     # DUMP, TIMER, AND OFF-SITE MIRROR
@@ -158,6 +229,17 @@ in {
     };
 
     # ========================================================================
+    # SCRAPER DEFENCE
+    # ========================================================================
+
+    services.anubis.instances.forgejo = lib.mkIf cfg.anubis.enable {
+      settings.TARGET = "http://127.0.0.1:${toString cfg.httpPort}";
+    };
+
+    # The Anubis socket is group-owned by anubis.
+    users.users.nginx.extraGroups = lib.mkIf cfg.anubis.enable [config.users.groups.anubis.name];
+
+    # ========================================================================
     # REVERSE PROXY AND FIREWALL
     # ========================================================================
 
@@ -166,17 +248,44 @@ in {
       recommendedProxySettings = true;
       recommendedGzipSettings = true;
 
-      virtualHosts = {
-        ${cfg.domain}.locations."/".proxyPass = "http://127.0.0.1:${toString cfg.httpPort}";
+      virtualHosts = let
+        direct = "http://127.0.0.1:${toString cfg.httpPort}";
+        geoblock = ''
+          if ($allowed_country = no) { return 403; }
+        '';
+
+        # Skip the login page and go straight to the provider.
+        loginRedirect = lib.optionalAttrs cfg.oidc.enable {
+          "= /user/login".return = "302 /user/oauth2/${cfg.oidc.name}";
+        };
+
+        # Git over HTTPS and API clients cannot solve a challenge, so they skip Anubis.
+        anubisFront = lib.optionalAttrs cfg.anubis.enable {
+          "~ (/info/refs|/git-upload-pack|/git-receive-pack)$" = {
+            proxyPass = direct;
+            extraConfig = geoblock;
+          };
+          "/api/" = {
+            proxyPass = direct;
+            extraConfig = geoblock;
+          };
+        };
+      in {
+        ${cfg.domain}.locations = {
+          "/".proxyPass = direct;
+        } // loginRedirect;
       } // lib.genAttrs cfg.aliases (alias: {
         forceSSL = true;
         enableACME = true;
-        locations."/" = {
-          proxyPass = "http://127.0.0.1:${toString cfg.httpPort}";
-          extraConfig = ''
-            if ($allowed_country = no) { return 403; }
-          '';
-        };
+        locations = {
+          "/" = {
+            proxyPass =
+              if cfg.anubis.enable
+              then "http://unix:${config.services.anubis.instances.forgejo.settings.BIND}"
+              else direct;
+            extraConfig = geoblock;
+          };
+        } // loginRedirect // anubisFront;
       });
     };
 

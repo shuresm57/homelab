@@ -58,3 +58,5 @@ talosconfig
 
 ### Local scratch notes (may contain hashes/paths)
 docs/commands.md
+.secret/*
+.secret

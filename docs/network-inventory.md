@@ -38,7 +38,7 @@ provider alias per host.
 | DNS name | IP | Node name | Hardware | Runs | Terraform root module |
 |---|---|---|---|---|---|
 | `dell.home.arpa` | `192.168.0.254` | `dell` | Dell 5820, Xeon W-2245, 96GB, RTX 4000 | `ollama`, `media` | `terraform/infra/` |
-| `hp32.home.arpa` | `192.168.0.129` | `hp32` | HP SFF, i7, 32GB | *(empty — Talos cluster destroyed)* | `terraform/infra/` |
+| `hp32.home.arpa` | `192.168.0.129` | `hp32` | HP SFF, i7, 32GB | *(empty, **powered off** to save power — WoL it when monitoring/backup get built)* | `terraform/infra/` |
 | `hp16.home.arpa` | `192.168.0.125` | `hp16` | HP SFF, i7, 16GB | `dns`, `git` | `terraform/infra/` |
 
 Web UI is `https://<ip>:8006` on all three.
@@ -49,10 +49,11 @@ Status legend: **live** = running now · **planned** = not built yet · **blocke
 
 | DNS name | IP | ID | Host | Runs | Ports | Source | Status |
 |---|---|---|---|---|---|---|---|
-| `git.home.arpa` | `.61` | 641 | hp16 | Forgejo + nginx | 80, 22 | `terraform/infra/` | **live** |
+| `home.home.arpa` | `.65` | 704 | dell | Homepage dashboard (nginx on 80) | 80 | `terraform/infra/` | **live** |
+| `git.home.arpa` | `.61` | 641 | hp16 | Forgejo + Keycloak (`auth.vstov.dk`) + nginx | 80, 443, 2222 | `terraform/infra/` | **live** |
 | `dns.home.arpa` | `.64` | 640 | hp16 | Pi-hole (`services.pihole-ftl`) | 53, 80 | `terraform/infra/` | **live** |
-| `media.home.arpa` | `.66` | — | dell | Nixarr: jellyfin, sonarr, radarr, prowlarr, bazarr, seerr, qbittorrent + ZFS RAIDZ1 over the HBA | 8096, 8989, 7878, 9696, 6767, 5055, 5252 | `nix/hosts/media.nix` | planned |
-| `ollama.home.arpa` | `.67` | 702 | dell | Ollama + open-webui | 11434 (API), 3000 (UI) | `hosts/dell/vms.tf` | VM **live**, service not installed |
+| `media.home.arpa` | `.66` | 703 | dell | Nixarr: jellyfin, sonarr, radarr, prowlarr, bazarr, seerr, qbittorrent (Mullvad-confined) + ZFS RAIDZ1 `tank` over the HBA | 8096, 8989, 7878, 9696, 6767, 5055, 5252 | `terraform/infra/` | **live** |
+| `ollama.home.arpa` | `.67` | 702 | dell | Ollama + open-webui | 11434 (API), 3000 (UI) | `terraform/infra/` | VM **live**, NixOS build in progress |
 | `monitoring.home.arpa` | `.68` | — | hp32 | Grafana + Prometheus | 80 | *(not written)* | planned |
 | `backup.home.arpa` | `.69` | — | hp32 | restic target + NFS | 2049 | *(not written)* | planned |
 
@@ -134,16 +135,29 @@ Two things make these actually reachable from your laptop:
    router's DHCP DNS server to `192.168.0.64` once Pi-hole is verified working. Until then, add
    entries to `/etc/hosts` by hand or you will chase phantom DNS failures.
 
-**Note the module default disagrees with intent:** `terraform/modules/proxmox-vm/variables.tf:88`
-defaults `dns_servers` to `["192.168.0.1", "192.168.0.64"]` — router first, so Pi-hole gets
-bypassed. Every call site overrides it in the right order, but the default should be flipped so a
-new VM that forgets to pass it still filters.
+The module default now agrees with intent: `terraform/modules/proxmox-vm/variables.tf` defaults
+`dns_servers` to `["192.168.0.64", "192.168.0.1"]` — Pi-hole first, so a VM that forgets to pass
+it still filters.
+
+## VPN confinement
+
+`qbittorrent` on `media` runs inside the `wg` network namespace (Mullvad `se-mma-wg-102`,
+Malmö). Nothing else on the host is tunneled — verified: the namespace exits at a Mullvad
+address while the host keeps its own ISP route.
+
+The wg-quick file lives at **`/data/.secret/vpn/wg.conf` on `media` only** (`0400 root:root`).
+`homelab.services.media.vpn.wgConf` is set to that path as a **string**, not a Nix path — a path
+literal would copy the private key into the world-readable `/nix/store` on every machine that
+evaluates the flake. The repo copy under `nix/.secret/` is gitignored and must stay that way.
+
+Killswitch verified: with `wg0` down the namespace has no route off-box (the only default route
+is `dev wg0`), so the client cannot fall back to the bare WAN address.
 
 ## RAM budgets
 
 | Host | Total | Allocated | Breakdown |
 |---|---|---|---|
-| dell | 96GB | 64GB (74GB once media lands) | ollama 64 (+ media 10) |
+| dell | 96GB | 76GB | ollama 64 + media 10 + home 2 |
 | hp32 | 32GB | 0GB (12GB once monitoring and backup land) | nothing yet (+ monitoring 8 + backup 4) |
 | hp16 | 16GB | 6GB | dns 2 + git 4 |
 

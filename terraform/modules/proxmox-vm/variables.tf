@@ -84,8 +84,10 @@ variable "ipv4_gateway" {
 }
 
 variable "dns_servers" {
+  # Pi-hole first: a VM that forgets to pass this should still filter, not fall
+  # straight through to the router.
   type    = list(string)
-  default = ["192.168.0.1", "192.168.0.64"]
+  default = ["192.168.0.64", "192.168.0.1"]
 }
 
 variable "boot_order" {

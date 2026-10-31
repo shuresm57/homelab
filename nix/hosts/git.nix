@@ -19,12 +19,21 @@
     aliases = [ "git.vstov.dk" ];
     sshPort = 2222;
 
+    anubis.enable = true;
+
+    oidc = {
+      enable = true; 
+      discoveryUrl = "https://auth.vstov.dk/realms/homelab/.well-known/openid-configuration";
+    };
+
     backup = {
       enable  = true;
       dir     = "/mnt/backup1/forgejo";
       mirrors = [ "/mnt/backup2/forgejo" ];
     };
   };
+
+  homelab.services.keycloak.enable = true;
 
   fileSystems."/mnt/backup1" = {
     device = "/dev/disk/by-uuid/6303-505B";
