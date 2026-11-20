@@ -10,6 +10,12 @@
     MulticastDNS = false;
   };
 
+  # Subnet router: the whole LAN, Pi-hole DNS included, reachable over the tailnet.
+  homelab.tailscale = {
+    enable = true;
+    advertiseRoutes = ["192.168.0.0/24"];
+  };
+
   homelab.services.pihole = {
     enable = true;
     domain = "home.arpa";

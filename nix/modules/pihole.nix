@@ -137,6 +137,10 @@ in {
           domainNeeded = true;
           expandHosts = true;
           interface = cfg.interface;
+          # LOCAL (the default) ignores clients outside eth0's subnet, so
+          # Tailscale clients (100.64.0.0/10) asking via split DNS hang.
+          # The VM sits behind the router, so port 53 is never on the WAN.
+          listeningMode = "ALL";
           upstreams = cfg.upstreams;
           hosts = lib.mapAttrsToList (name: ip: "${ip} ${name}") cfg.records;
         };
