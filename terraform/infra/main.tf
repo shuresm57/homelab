@@ -20,6 +20,14 @@ locals {
           { host = "2-7", usb3 = true }, # Samsung Flash FIT -> /mnt/backup2
         ]
       }
+      # Forgejo Actions runner, host-execution labels, no Docker.
+      ci = {
+        vm_id        = 642
+        cores        = 1
+        memory_mb    = 1536
+        disk_size_gb = 12
+        ip           = "192.168.0.80/24"
+      }
     }
 
     dell = {

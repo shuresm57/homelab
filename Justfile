@@ -8,6 +8,7 @@ rebuild host:
     home)   ip=192.168.0.65 ;;
     media)  ip=192.168.0.66 ;;
     ollama) ip=192.168.0.67 ;;
+    ci) ip=192.168.0.80 ;;
     *) echo "unknown host: {{host}}" >&2; exit 1 ;;
   esac
   nix run nixpkgs#nixos-rebuild -- switch --no-reexec --flake .#{{host}} \

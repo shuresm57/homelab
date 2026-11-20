@@ -29,6 +29,7 @@
       home = mkHost "home";
       ollama = mkHost "ollama";
       media = mkHost "media";
+      ci = mkHost "ci";
     };
   };
 }

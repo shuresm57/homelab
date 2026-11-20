@@ -56,10 +56,16 @@ Status legend: **live** = running now · **planned** = not built yet · **blocke
 | `ollama.home.arpa` | `.67` | 702 | dell | Ollama + open-webui | 11434 (API), 3000 (UI) | `terraform/infra/` | VM **live**, NixOS build in progress |
 | `monitoring.home.arpa` | `.68` | — | hp32 | Grafana + Prometheus | 80 | *(not written)* | planned |
 | `backup.home.arpa` | `.69` | — | hp32 | restic target + NFS | 2049 | *(not written)* | planned |
+| `ci.home.arpa` | `.80` | 642 | hp16 | Forgejo Actions runner (`services.gitea-actions-runner`, host-execution label, no Docker) | — | `terraform/infra/` | planned |
 
 `.60`, `.62` and `.63` are deliberately unused. They were `cp-1`, `worker-2` and `worker-3` on the
 Talos cluster, which has been destroyed; holding them means adding Kubernetes later is a new entry
 here rather than a renumbering.
+
+`ci` is a plain NixOS guest like the rest, just running `services.gitea-actions-runner` instead of
+a `homelab.services.*` wrapper — one instance, one host, nothing else reuses it yet. It lives at
+`.80`, inside the otherwise-unclaimed `.80–.89` block (`.70–.79` is MetalLB's, `.90–.93` is the
+KTHW lab's).
 
 ## MetalLB — Kubernetes LoadBalancer services
 
@@ -159,7 +165,7 @@ is `dev wg0`), so the client cannot fall back to the bare WAN address.
 |---|---|---|---|
 | dell | 96GB | 76GB | ollama 64 + media 10 + home 2 |
 | hp32 | 32GB | 0GB (12GB once monitoring and backup land) | nothing yet (+ monitoring 8 + backup 4) |
-| hp16 | 16GB | 6GB | dns 2 + git 4 |
+| hp16 | 16GB | 7.5GB | dns 2 + git 4 + ci 1.5 |
 
 There is a lot of headroom now that the Talos cluster is gone — hp16 sits at 6GB of 16GB and hp32
 is empty. That spare capacity is where Kubernetes goes when I get to it.

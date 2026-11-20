@@ -10,6 +10,7 @@
   "jellyfin.home.arpa" = "192.168.0.66";
   "ollama.home.arpa" = "192.168.0.67";
   "grafana.home.arpa" = "192.168.0.68";
+  "ci.home.arpa" = "192.168.0.80";
   "hp16.home.arpa" = "192.168.0.125";
   "hp32.home.arpa" = "192.168.0.129";
   "dell.home.arpa" = "192.168.0.254";
